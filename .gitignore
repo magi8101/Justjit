@@ -1,0 +1,61 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+venv/
+env/
+build/
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Build artifacts
+*.so
+*.pyd
+*.dll
+*.dylib
+*.a
+*.lib
+*.exp
+*.obj
+*.o
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated bindings
+src/justjit/_core.*
+
+# Test outputs
+*.pyc
+test_*.py
+check_*.py
+debug_*.py
+verify_*.py
+analyze_*.py
+decode_*.py
+get_*.py
+map_*.py
+trace_*.py
+quick_test.py
+
+#uv-files
+uv.lock

@@ -1,0 +1,47 @@
+[build-system]
+requires = ["scikit-build-core >=0.4.3", "nanobind>=2.0.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "justjit"
+version = "0.1.0"
+description = "Fast Python JIT compiler using LLVM ORC"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "JustJIT Contributors" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: C++",
+]
+dependencies = [
+    "numpy>=1.20.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/magi8101/justjit"
+Repository = "https://github.com/magi8101/justjit"
+
+[tool.scikit-build]
+minimum-version = "0.4"
+build-dir = "build/{wheel_tag}"
+wheel.py-api = "cp312"
+cmake.args = ["-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"]
+
+[tool.cibuildwheel]
+build-verbosity = 1
+skip = ["cp37-*", "pp37-*"]
+archs = ["auto64"]
+
+[tool.cibuildwheel.macos.environment]
+MACOSX_DEPLOYMENT_TARGET = "10.14"
