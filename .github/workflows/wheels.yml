@@ -81,7 +81,7 @@ jobs:
         CIBW_SKIP: "*-musllinux_* *-win32 *-manylinux_i686"
         CIBW_ARCHS: ${{ matrix.arch }}
         CIBW_BEFORE_ALL_LINUX: |
-          yum install -y wget xz zlib-devel
+          yum install -y wget xz zlib-devel ncurses-devel
           wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
           tar -xf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
           mv clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04 /opt/llvm
@@ -102,6 +102,7 @@ jobs:
         CIBW_ENVIRONMENT: >
           LLVM_DIR=${{ env.LLVM_DIR }}
           CMAKE_PREFIX_PATH=${{ env.CMAKE_PREFIX_PATH }}
+          MACOSX_DEPLOYMENT_TARGET=10.14
         CIBW_ENVIRONMENT_WINDOWS: >
           LLVM_DIR=${{ github.workspace }}\llvm-install\lib\cmake\llvm
           CMAKE_PREFIX_PATH=${{ github.workspace }}\llvm-install
