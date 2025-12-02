@@ -55,63 +55,35 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
     src/bindings.cpp
 )
 
-# Link LLVM libraries
-target_link_libraries(_core PRIVATE
-    # Core LLVM
-    LLVMCore
-    LLVMSupport
-    LLVMExecutionEngine
-    LLVMOrcJIT
-    LLVMRuntimeDyld
-    LLVMOrcTargetProcess
-    LLVMOrcShared
-    LLVMJITLink
-    LLVMObject
-    LLVMTarget
-    LLVMMC
-    LLVMMCParser
-    LLVMBitReader
-    LLVMBitWriter
-    LLVMIRReader
-    LLVMAsmParser
-    LLVMTransformUtils
-    LLVMAnalysis
-    LLVMCodeGen
-    LLVMSelectionDAG
-    LLVMScalarOpts
-    LLVMInstCombine
-    LLVMAggressiveInstCombine
-    LLVMipo
-    LLVMVectorize
-    LLVMSandboxIR
-    LLVMInstrumentation
-    LLVMPasses
-    LLVMObjCARCOpts
-    LLVMCGData
-    LLVMLinker
-    LLVMFrontendOpenMP
-    LLVMAsmPrinter
-    LLVMMCDisassembler
-    # X86 Target
-    LLVMX86CodeGen
-    LLVMX86AsmParser
-    LLVMX86Desc
-    LLVMX86Info
-    # Support
-    LLVMDemangle
-    LLVMBinaryFormat
-    LLVMTargetParser
-    LLVMBitstreamReader
-    LLVMRemarks
-    LLVMTextAPI
-    LLVMProfileData
-    LLVMSymbolize
-    LLVMDebugInfoDWARF
-    LLVMDebugInfoPDB
-    LLVMGlobalISel
-    LLVMCodeGenTypes
-    LLVMCFGuard
+# Use LLVM's llvm_map_components_to_libnames to get the right libraries
+# This handles version differences and platform specifics automatically
+llvm_map_components_to_libnames(LLVM_LIBS
+    Core
+    Support
+    ExecutionEngine
+    OrcJIT
+    native
+    Passes
+    IRReader
+    AsmParser
+    Linker
+    ipo
+    Instrumentation
+    ScalarOpts
+    InstCombine
+    TransformUtils
+    Analysis
+    Object
+    MC
+    MCParser
+    BitReader
+    BitWriter
 )
+
+message(STATUS "LLVM libraries: ${LLVM_LIBS}")
+
+# Link LLVM libraries
+target_link_libraries(_core PRIVATE ${LLVM_LIBS})
 
 # Add zlib if found
 if(ZLIB_FOUND)
