@@ -11,6 +11,7 @@ on:
     types: [published]
 
 env:
+  # Using conda-forge llvmdev 18.1.8 for static linking
   LLVM_VERSION: "18.1.8"
 
 jobs:
@@ -27,6 +28,8 @@ jobs:
             arch: x86_64
           - os: macos-14
             arch: arm64
+          - os: windows-latest
+            arch: AMD64
 
     steps:
     - uses: actions/checkout@v4
@@ -38,15 +41,8 @@ jobs:
       with:
         python-version: '3.12'
 
-    # ===== LLVM Setup for macOS (Linux uses CIBW_BEFORE_ALL) =====
-    - name: Install LLVM via Homebrew (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        brew install llvm@18
-        echo "LLVM_DIR=$(brew --prefix llvm@18)/lib/cmake/llvm" >> $GITHUB_ENV
-        echo "CMAKE_PREFIX_PATH=$(brew --prefix llvm@18)" >> $GITHUB_ENV
-
-    # ===== Build Wheels =====
+    # ===== Build Wheels (Linux) =====
+    # Uses CIBW_BEFORE_ALL to install Miniconda + llvmdev inside the container
     - name: Build wheels (Linux)
       if: runner.os == 'Linux'
       uses: pypa/cibuildwheel@v2.21
@@ -56,18 +52,44 @@ jobs:
         CIBW_ARCHS: ${{ matrix.arch }}
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
         CIBW_BEFORE_ALL_LINUX: |
-          dnf install -y wget xz zlib-devel ncurses-devel libffi-devel
-          wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-          tar -xf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-          mv clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04 /opt/llvm
+          # Install system dependencies
+          dnf install -y wget bzip2 zlib-devel libffi-devel
+          # Install Miniconda
+          wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
+          bash /tmp/miniconda.sh -b -p /opt/conda
+          /opt/conda/bin/conda init bash
+          # Install llvmdev from conda-forge (includes static libraries)
+          /opt/conda/bin/conda install -y -c conda-forge llvmdev=18.1.8 zlib libxml2
+          # Verify installation
+          ls -la /opt/conda/lib/cmake/llvm/
         CIBW_ENVIRONMENT_LINUX: >
-          LLVM_DIR=/opt/llvm/lib/cmake/llvm
-          CMAKE_PREFIX_PATH=/opt/llvm
-          LD_LIBRARY_PATH=/opt/llvm/lib:$LD_LIBRARY_PATH
+          LLVM_DIR=/opt/conda/lib/cmake/llvm
+          CMAKE_PREFIX_PATH=/opt/conda
+          PATH=/opt/conda/bin:$PATH
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
         CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair --plat manylinux_2_28_x86_64 -w {dest_dir} {wheel}"
-        CIBW_TEST_COMMAND: ""
+        CIBW_TEST_COMMAND: "python -c \"import justjit; print(justjit.__version__)\""
         CIBW_BUILD_VERBOSITY: 3
+
+    # ===== Build Wheels (macOS) =====
+    # Use setup-miniconda for cleaner conda management
+    - name: Setup Miniconda (macOS)
+      if: runner.os == 'macOS'
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        auto-activate-base: true
+        activate-environment: ""
+
+    - name: Install LLVM via conda-forge (macOS)
+      if: runner.os == 'macOS'
+      shell: bash -el {0}
+      run: |
+        conda install -y -c conda-forge llvmdev=18.1.8 zlib libxml2
+        echo "LLVM_DIR=$CONDA_PREFIX/lib/cmake/llvm" >> $GITHUB_ENV
+        echo "CMAKE_PREFIX_PATH=$CONDA_PREFIX" >> $GITHUB_ENV
+        # Verify
+        ls -la "$CONDA_PREFIX/lib/cmake/llvm/"
 
     - name: Build wheels (macOS)
       if: runner.os == 'macOS'
@@ -82,7 +104,43 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET=10.14
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
         CIBW_REPAIR_WHEEL_COMMAND_MACOS: ""
-        CIBW_TEST_COMMAND: ""
+        CIBW_TEST_COMMAND: "python -c \"import justjit; print(justjit.__version__)\""
+        CIBW_BUILD_VERBOSITY: 3
+
+    # ===== Build Wheels (Windows) =====
+    # Use setup-miniconda for cleaner conda management
+    - name: Setup Miniconda (Windows)
+      if: runner.os == 'Windows'
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        auto-activate-base: true
+        activate-environment: ""
+
+    - name: Install LLVM via conda-forge (Windows)
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        conda install -y -c conda-forge llvmdev=18.1.8 zlib libxml2 cmake ninja
+        # On Windows, conda installs to $CONDA_PREFIX/Library
+        echo "LLVM_DIR=$CONDA_PREFIX/Library/lib/cmake/llvm" >> $GITHUB_ENV
+        echo "CMAKE_PREFIX_PATH=$CONDA_PREFIX/Library" >> $GITHUB_ENV
+        # Verify
+        ls -la "$CONDA_PREFIX/Library/lib/cmake/llvm/"
+
+    - name: Build wheels (Windows)
+      if: runner.os == 'Windows'
+      uses: pypa/cibuildwheel@v2.21
+      env:
+        CIBW_BUILD: "cp311-* cp312-* cp313-*"
+        CIBW_SKIP: "*-win32"
+        CIBW_ARCHS: ${{ matrix.arch }}
+        CIBW_ENVIRONMENT: >
+          LLVM_DIR=${{ env.LLVM_DIR }}
+          CMAKE_PREFIX_PATH=${{ env.CMAKE_PREFIX_PATH }}
+        CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja delvewheel"
+        CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair --add-path ${{ env.CMAKE_PREFIX_PATH }}/bin -w {dest_dir} {wheel}"
+        CIBW_TEST_COMMAND: "python -c \"import justjit; print(justjit.__version__)\""
         CIBW_BUILD_VERBOSITY: 3
 
     - name: Upload wheels

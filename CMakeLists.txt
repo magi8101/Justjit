@@ -131,8 +131,12 @@ elseif(UNIX AND NOT APPLE)
         ${CMAKE_DL_LIBS}
         rt
         m
-        tinfo
     )
+    # tinfo/ncurses is optional - some LLVM builds need it, some don't
+    find_library(TINFO_LIBRARY NAMES tinfo ncurses ncursesw)
+    if(TINFO_LIBRARY)
+        target_link_libraries(_core PRIVATE ${TINFO_LIBRARY})
+    endif()
 elseif(APPLE)
     # macOS system libraries
     find_library(COREFOUNDATION_LIBRARY CoreFoundation)
