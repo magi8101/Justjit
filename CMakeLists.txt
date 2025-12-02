@@ -93,7 +93,6 @@ llvm_map_components_to_libnames(LLVM_LIBS
     AsmPrinter
     GlobalISel
     Demangle
-    DebugInfoDWARF
     BinaryFormat
     Remarks
     BitstreamReader
