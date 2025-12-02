@@ -66,10 +66,9 @@ jobs:
           /opt/conda/bin/conda install -y --override-channels -c conda-forge llvmdev=18.1.8 zlib libxml2
           # Verify installation
           ls -la /opt/conda/lib/cmake/llvm/ || true
-        CIBW_ENVIRONMENT_LINUX: >
+        CIBW_ENVIRONMENT_LINUX: >-
           LLVM_DIR=/opt/conda/lib/cmake/llvm
           CMAKE_PREFIX_PATH=/opt/conda
-          PATH=/opt/conda/bin:$PATH
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
         CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair --plat manylinux_2_28_x86_64 -w {dest_dir} {wheel}"
         CIBW_TEST_COMMAND: ""
