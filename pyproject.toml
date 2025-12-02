@@ -36,7 +36,7 @@ Repository = "https://github.com/magi8101/justjit"
 minimum-version = "0.4"
 build-dir = "build/{wheel_tag}"
 wheel.py-api = "cp312"
-cmake.args = ["-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"]
+cmake.args = ["-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake", "-DLLVM_DIR=C:/Users/vetri/llvm-project/build/lib/cmake/llvm", "-DCMAKE_PREFIX_PATH=C:/Users/vetri/llvm-project/build"]
 
 [tool.cibuildwheel]
 build-verbosity = 1

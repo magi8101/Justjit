@@ -33,9 +33,6 @@ link_directories(${LLVM_LIBRARY_DIRS})
 
 # zlib (optional, needed on some platforms)
 find_package(ZLIB)
-if(ZLIB_FOUND)
-    set(ZLIB_LIBRARY ${ZLIB_LIBRARIES})
-endif()
 
 # LLVM definitions
 add_definitions(
@@ -45,12 +42,12 @@ add_definitions(
     -D_CRT_NONSTDC_NO_WARNINGS
     -D_SCL_SECURE_NO_DEPRECATE
     -D_SCL_SECURE_NO_WARNINGS
+    -DUNICODE
+    -D_UNICODE
+    -D__STDC_CONSTANT_MACROS
+    -D__STDC_FORMAT_MACROS
     -D__STDC_LIMIT_MACROS
 )
-)
-
-include_directories(${LLVM_INCLUDE_DIRS})
-link_directories(${LLVM_LIBRARY_DIR})
 
 # Create extension module
 nanobind_add_module(_core NB_STATIC NOMINSIZE
@@ -114,25 +111,24 @@ target_link_libraries(_core PRIVATE
     LLVMGlobalISel
     LLVMCodeGenTypes
     LLVMCFGuard
-    # External dependencies
-    ${ZLIB_LIBRARY}
-    LLVMCFGuard
 )
 
 # Add zlib if found
 if(ZLIB_FOUND)
-    target_link_libraries(_core PRIVATE ${ZLIB_LIBRARY})
-    ws2_32
-  )
+    target_link_libraries(_core PRIVATE ${ZLIB_LIBRARIES})
 endif()
-  target_link_libraries(_core PRIVATE
-    # Windows system libraries
-    uuid
-    advapi32
-    ws2_32
-)
 
-target_include_directories(_core PRIVATE ${LLVM_INCLUDE_DIRS})
+# Platform-specific libraries
+if(WIN32)
+    target_link_libraries(_core PRIVATE
+        psapi
+        shell32
+        ole32
+        uuid
+        advapi32
+        ws2_32
+    )
+endif()
 
 set_target_properties(_core PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/justjit"

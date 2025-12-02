@@ -6,6 +6,11 @@ namespace nb = nanobind;
 using namespace nb::literals;
 
 NB_MODULE(_core, m) {
+    // Disable leak warnings - our extension stores references to globals
+    // which creates cycles that Python's GC handles but appear as leaks
+    // at interpreter shutdown. See nanobind docs on reference leaks.
+    nb::set_leak_warnings(false);
+    
     m.doc() = "Fast Python JIT compiler using LLVM ORC";
     
     nb::class_<justjit::JITCore>(m, "JIT")
@@ -13,12 +18,22 @@ NB_MODULE(_core, m) {
         .def("set_opt_level", &justjit::JITCore::set_opt_level, "level"_a)
         .def("get_opt_level", &justjit::JITCore::get_opt_level)
         .def("compile", 
-             [](justjit::JITCore& self, nb::list instructions, nb::list constants, nb::list names, nb::list globals,
-                const std::string& name, int param_count, int total_locals) {
-                 return self.compile_function(instructions, constants, names, globals, name, param_count, total_locals);
+             [](justjit::JITCore& self, nb::list instructions, nb::list constants, nb::list names, 
+                nb::object globals_dict, nb::object builtins_dict, nb::list closure_cells,
+                const std::string& name, int param_count, int total_locals, int nlocals) {
+                 return self.compile_function(instructions, constants, names, globals_dict, builtins_dict, closure_cells, name, param_count, total_locals, nlocals);
              },
-             "instructions"_a, "constants"_a, "names"_a, "globals"_a, "name"_a, "param_count"_a = 2, "total_locals"_a = 3,
+             "instructions"_a, "constants"_a, "names"_a, "globals_dict"_a, "builtins_dict"_a, "closure_cells"_a, "name"_a, "param_count"_a = 2, "total_locals"_a = 3, "nlocals"_a = 3,
              "Compile a Python function to native code")
+        .def("compile_int",
+             [](justjit::JITCore& self, nb::list instructions, nb::list constants,
+                const std::string& name, int param_count, int total_locals) {
+                 return self.compile_int_function(instructions, constants, name, param_count, total_locals);
+             },
+             "instructions"_a, "constants"_a, "name"_a, "param_count"_a = 2, "total_locals"_a = 3,
+             "Compile an integer-only function to native code (no Python object overhead)")
         .def("lookup", &justjit::JITCore::lookup_symbol, "name"_a)
-        .def("get_callable", &justjit::JITCore::get_callable, "name"_a, "param_count"_a);
+        .def("get_callable", &justjit::JITCore::get_callable, "name"_a, "param_count"_a)
+        .def("get_int_callable", &justjit::JITCore::get_int_callable, "name"_a, "param_count"_a,
+             "Get a callable for an integer-mode function");
 }
