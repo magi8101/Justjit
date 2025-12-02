@@ -59,7 +59,7 @@ jobs:
           wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
           bash /tmp/miniconda.sh -b -p /opt/conda
           # Install llvmdev from conda-forge (includes static libraries)
-          /opt/conda/bin/conda install -y -c conda-forge llvmdev=18.1.8 zlib libxml2 libzlib
+          /opt/conda/bin/conda install -y -c conda-forge llvmdev=18.1.8 zlib libxml2
           # Verify installation
           ls -la /opt/conda/lib/cmake/llvm/ || true
         CIBW_ENVIRONMENT_LINUX: >
@@ -126,10 +126,13 @@ jobs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        conda install -y llvmdev=18.1.8 zlib libxml2 cmake ninja
+        conda install -y llvmdev=18.1.8 zlib libxml2
         # On Windows, conda installs to $env:CONDA_PREFIX\Library
-        echo "LLVM_DIR=$env:CONDA_PREFIX\Library\lib\cmake\llvm" >> $env:GITHUB_ENV
-        echo "CMAKE_PREFIX_PATH=$env:CONDA_PREFIX\Library" >> $env:GITHUB_ENV
+        # Use forward slashes for CMake compatibility
+        $llvmDir = "$env:CONDA_PREFIX/Library/lib/cmake/llvm" -replace '\\', '/'
+        $prefixPath = "$env:CONDA_PREFIX/Library" -replace '\\', '/'
+        echo "LLVM_DIR=$llvmDir" >> $env:GITHUB_ENV
+        echo "CMAKE_PREFIX_PATH=$prefixPath" >> $env:GITHUB_ENV
         # Verify
         Get-ChildItem "$env:CONDA_PREFIX\Library\lib\cmake\llvm"
 
