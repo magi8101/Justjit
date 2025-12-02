@@ -21,6 +21,10 @@ JustJIT is a high-performance Just-In-Time compiler for Python that leverages LL
 
 ## Installation
 
+```bash
+pip install justjit
+```
+
 ### Prerequisites
 
 - Python 3.8 or higher
