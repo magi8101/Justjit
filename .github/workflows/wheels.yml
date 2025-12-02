@@ -88,7 +88,9 @@ jobs:
         CIBW_ENVIRONMENT_LINUX: >
           LLVM_DIR=/opt/llvm/lib/cmake/llvm
           CMAKE_PREFIX_PATH=/opt/llvm
+          LD_LIBRARY_PATH=/opt/llvm/lib:$LD_LIBRARY_PATH
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
+        CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair --plat manylinux2014_x86_64 -w {dest_dir} {wheel}"
         CIBW_TEST_COMMAND: "python -c \"import justjit; print(justjit.jit(lambda x: x+1)(5))\""
         CIBW_BUILD_VERBOSITY: 3
 

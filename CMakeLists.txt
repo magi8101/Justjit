@@ -22,11 +22,17 @@ find_package(nanobind CONFIG REQUIRED)
 # LLVM configuration
 # Users should set LLVM_DIR to their LLVM installation
 # Example: cmake -DLLVM_DIR=/path/to/llvm/build/lib/cmake/llvm ..
+
+# Force static LLVM linking for standalone wheels
+set(LLVM_LINK_LLVM_DYLIB OFF CACHE BOOL "Link against static LLVM libraries" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries" FORCE)
+
 find_package(LLVM REQUIRED CONFIG)
 
 # LLVM paths from find_package
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+message(STATUS "LLVM library dir: ${LLVM_LIBRARY_DIRS}")
 
 include_directories(${LLVM_INCLUDE_DIRS})
 link_directories(${LLVM_LIBRARY_DIRS})
@@ -62,6 +68,8 @@ llvm_map_components_to_libnames(LLVM_LIBS
     Support
     ExecutionEngine
     OrcJIT
+    MCJIT
+    RuntimeDyld
     native
     Passes
     IRReader
@@ -76,8 +84,23 @@ llvm_map_components_to_libnames(LLVM_LIBS
     Object
     MC
     MCParser
+    MCDisassembler
     BitReader
     BitWriter
+    Target
+    CodeGen
+    SelectionDAG
+    AsmPrinter
+    GlobalISel
+    Demangle
+    DebugInfoDWARF
+    BinaryFormat
+    Remarks
+    BitstreamReader
+    ProfileData
+    AggressiveInstCombine
+    Vectorize
+    CFGuard
 )
 
 message(STATUS "LLVM libraries: ${LLVM_LIBS}")
@@ -100,6 +123,20 @@ if(WIN32)
         advapi32
         ws2_32
     )
+elseif(UNIX AND NOT APPLE)
+    # Linux system libraries needed by LLVM
+    find_package(Threads REQUIRED)
+    target_link_libraries(_core PRIVATE
+        Threads::Threads
+        ${CMAKE_DL_LIBS}
+        rt
+        m
+        tinfo
+    )
+elseif(APPLE)
+    # macOS system libraries
+    find_library(COREFOUNDATION_LIBRARY CoreFoundation)
+    target_link_libraries(_core PRIVATE ${COREFOUNDATION_LIBRARY})
 endif()
 
 set_target_properties(_core PROPERTIES
