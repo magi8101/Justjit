@@ -23,8 +23,6 @@ jobs:
         include:
           - os: ubuntu-latest
             arch: x86_64
-          - os: windows-latest
-            arch: AMD64
           - os: macos-13
             arch: x86_64
           - os: macos-14
@@ -40,37 +38,13 @@ jobs:
       with:
         python-version: '3.12'
 
-    # ===== LLVM Setup for non-Linux (Linux uses CIBW_BEFORE_ALL) =====
+    # ===== LLVM Setup for macOS (Linux uses CIBW_BEFORE_ALL) =====
     - name: Install LLVM via Homebrew (macOS)
       if: runner.os == 'macOS'
       run: |
         brew install llvm@18
         echo "LLVM_DIR=$(brew --prefix llvm@18)/lib/cmake/llvm" >> $GITHUB_ENV
         echo "CMAKE_PREFIX_PATH=$(brew --prefix llvm@18)" >> $GITHUB_ENV
-
-    - name: Cache LLVM (Windows)
-      if: runner.os == 'Windows'
-      id: cache-llvm-win
-      uses: actions/cache@v4
-      with:
-        path: ${{ github.workspace }}/llvm-install
-        key: llvm-${{ env.LLVM_VERSION }}-windows-v2
-
-    - name: Download LLVM (Windows)
-      if: runner.os == 'Windows' && steps.cache-llvm-win.outputs.cache-hit != 'true'
-      shell: powershell
-      run: |
-        Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.LLVM_VERSION }}/clang+llvm-${{ env.LLVM_VERSION }}-x86_64-pc-windows-msvc.tar.xz" -OutFile "llvm.tar.xz"
-        7z x llvm.tar.xz
-        7z x llvm.tar
-        Move-Item "clang+llvm-${{ env.LLVM_VERSION }}-x86_64-pc-windows-msvc" llvm-install
-
-    - name: Set LLVM environment (Windows)
-      if: runner.os == 'Windows'
-      shell: bash
-      run: |
-        echo "LLVM_DIR=${{ github.workspace }}/llvm-install/lib/cmake/llvm" >> $GITHUB_ENV
-        echo "CMAKE_PREFIX_PATH=${{ github.workspace }}/llvm-install" >> $GITHUB_ENV
 
     # ===== Build Wheels =====
     - name: Build wheels (Linux)
@@ -80,8 +54,9 @@ jobs:
         CIBW_BUILD: "cp311-* cp312-* cp313-*"
         CIBW_SKIP: "*-musllinux_* *-win32 *-manylinux_i686"
         CIBW_ARCHS: ${{ matrix.arch }}
+        CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
         CIBW_BEFORE_ALL_LINUX: |
-          yum install -y wget xz zlib-devel ncurses-devel
+          dnf install -y wget xz zlib-devel ncurses-devel libffi-devel
           wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
           tar -xf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
           mv clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04 /opt/llvm
@@ -90,12 +65,12 @@ jobs:
           CMAKE_PREFIX_PATH=/opt/llvm
           LD_LIBRARY_PATH=/opt/llvm/lib:$LD_LIBRARY_PATH
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
-        CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair --plat manylinux2014_x86_64 -w {dest_dir} {wheel}"
+        CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair --plat manylinux_2_28_x86_64 -w {dest_dir} {wheel}"
         CIBW_TEST_COMMAND: "python -c \"import justjit; print(justjit.jit(lambda x: x+1)(5))\""
         CIBW_BUILD_VERBOSITY: 3
 
-    - name: Build wheels (macOS/Windows)
-      if: runner.os != 'Linux'
+    - name: Build wheels (macOS)
+      if: runner.os == 'macOS'
       uses: pypa/cibuildwheel@v2.21
       env:
         CIBW_BUILD: "cp311-* cp312-* cp313-*"
@@ -105,9 +80,6 @@ jobs:
           LLVM_DIR=${{ env.LLVM_DIR }}
           CMAKE_PREFIX_PATH=${{ env.CMAKE_PREFIX_PATH }}
           MACOSX_DEPLOYMENT_TARGET=10.14
-        CIBW_ENVIRONMENT_WINDOWS: >
-          LLVM_DIR=${{ github.workspace }}\llvm-install\lib\cmake\llvm
-          CMAKE_PREFIX_PATH=${{ github.workspace }}\llvm-install
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
         CIBW_REPAIR_WHEEL_COMMAND_MACOS: ""
         CIBW_TEST_COMMAND: "python -c \"import justjit; print(justjit.jit(lambda x: x+1)(5))\""
@@ -143,7 +115,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-14]
+        os: [ubuntu-latest, macos-14]
         python: ['3.11', '3.12', '3.13']
     
     steps:
