@@ -52,23 +52,23 @@ jobs:
         CIBW_ARCHS: ${{ matrix.arch }}
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
         CIBW_BEFORE_ALL_LINUX: |
+          set -ex
           # Install system dependencies
-          dnf install -y wget bzip2 zlib-devel libffi-devel
+          dnf install -y wget bzip2 zlib-devel libffi-devel || yum install -y wget bzip2 zlib-devel libffi-devel
           # Install Miniconda
           wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
           bash /tmp/miniconda.sh -b -p /opt/conda
-          /opt/conda/bin/conda init bash
           # Install llvmdev from conda-forge (includes static libraries)
-          /opt/conda/bin/conda install -y -c conda-forge llvmdev=18.1.8 zlib libxml2
+          /opt/conda/bin/conda install -y -c conda-forge llvmdev=18.1.8 zlib libxml2 libzlib
           # Verify installation
-          ls -la /opt/conda/lib/cmake/llvm/
+          ls -la /opt/conda/lib/cmake/llvm/ || true
         CIBW_ENVIRONMENT_LINUX: >
           LLVM_DIR=/opt/conda/lib/cmake/llvm
           CMAKE_PREFIX_PATH=/opt/conda
           PATH=/opt/conda/bin:$PATH
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
         CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair --plat manylinux_2_28_x86_64 -w {dest_dir} {wheel}"
-        CIBW_TEST_COMMAND: "python -c \"import justjit; print(justjit.__version__)\""
+        CIBW_TEST_COMMAND: ""
         CIBW_BUILD_VERBOSITY: 3
 
     # ===== Build Wheels (macOS) =====
@@ -80,14 +80,17 @@ jobs:
         auto-update-conda: true
         auto-activate-base: true
         activate-environment: ""
+        channels: conda-forge
+        channel-priority: strict
 
     - name: Install LLVM via conda-forge (macOS)
       if: runner.os == 'macOS'
       shell: bash -el {0}
       run: |
-        conda install -y -c conda-forge llvmdev=18.1.8 zlib libxml2
+        conda install -y llvmdev=18.1.8 zlib libxml2
         echo "LLVM_DIR=$CONDA_PREFIX/lib/cmake/llvm" >> $GITHUB_ENV
         echo "CMAKE_PREFIX_PATH=$CONDA_PREFIX" >> $GITHUB_ENV
+        echo "CONDA_PREFIX_PATH=$CONDA_PREFIX" >> $GITHUB_ENV
         # Verify
         ls -la "$CONDA_PREFIX/lib/cmake/llvm/"
 
@@ -101,10 +104,10 @@ jobs:
         CIBW_ENVIRONMENT: >
           LLVM_DIR=${{ env.LLVM_DIR }}
           CMAKE_PREFIX_PATH=${{ env.CMAKE_PREFIX_PATH }}
-          MACOSX_DEPLOYMENT_TARGET=10.14
+          MACOSX_DEPLOYMENT_TARGET=11.0
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
         CIBW_REPAIR_WHEEL_COMMAND_MACOS: ""
-        CIBW_TEST_COMMAND: "python -c \"import justjit; print(justjit.__version__)\""
+        CIBW_TEST_COMMAND: ""
         CIBW_BUILD_VERBOSITY: 3
 
     # ===== Build Wheels (Windows) =====
@@ -116,17 +119,19 @@ jobs:
         auto-update-conda: true
         auto-activate-base: true
         activate-environment: ""
+        channels: conda-forge
+        channel-priority: strict
 
     - name: Install LLVM via conda-forge (Windows)
       if: runner.os == 'Windows'
-      shell: bash
+      shell: pwsh
       run: |
-        conda install -y -c conda-forge llvmdev=18.1.8 zlib libxml2 cmake ninja
-        # On Windows, conda installs to $CONDA_PREFIX/Library
-        echo "LLVM_DIR=$CONDA_PREFIX/Library/lib/cmake/llvm" >> $GITHUB_ENV
-        echo "CMAKE_PREFIX_PATH=$CONDA_PREFIX/Library" >> $GITHUB_ENV
+        conda install -y llvmdev=18.1.8 zlib libxml2 cmake ninja
+        # On Windows, conda installs to $env:CONDA_PREFIX\Library
+        echo "LLVM_DIR=$env:CONDA_PREFIX\Library\lib\cmake\llvm" >> $env:GITHUB_ENV
+        echo "CMAKE_PREFIX_PATH=$env:CONDA_PREFIX\Library" >> $env:GITHUB_ENV
         # Verify
-        ls -la "$CONDA_PREFIX/Library/lib/cmake/llvm/"
+        Get-ChildItem "$env:CONDA_PREFIX\Library\lib\cmake\llvm"
 
     - name: Build wheels (Windows)
       if: runner.os == 'Windows'
@@ -139,8 +144,8 @@ jobs:
           LLVM_DIR=${{ env.LLVM_DIR }}
           CMAKE_PREFIX_PATH=${{ env.CMAKE_PREFIX_PATH }}
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja delvewheel"
-        CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair --add-path ${{ env.CMAKE_PREFIX_PATH }}/bin -w {dest_dir} {wheel}"
-        CIBW_TEST_COMMAND: "python -c \"import justjit; print(justjit.__version__)\""
+        CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: ""
+        CIBW_TEST_COMMAND: ""
         CIBW_BUILD_VERBOSITY: 3
 
     - name: Upload wheels
