@@ -182,7 +182,8 @@ jobs:
     name: Publish to PyPI
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
+    # Publish on push to main or on release
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'release' && github.event.action == 'published')
     
     permissions:
       id-token: write  # For trusted publishing
@@ -203,3 +204,4 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
+        skip-existing: true  # Don't fail if version already exists
