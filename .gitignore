@@ -56,6 +56,30 @@ get_*.py
 map_*.py
 trace_*.py
 quick_test.py
+test.py
+explian.py
+
+# Debug/temp files
+jit_debug.txt
+*.log
+
+# Scripts (local only)
+copy_llvm_dlls.py
+run_valgrind.sh
+run_valgrind_*.sh
+publish_to_pypi.ps1
+
+# Presentation files
+presentation/
+presentation-web/
+
+# Package lock
+package-lock.json
+
+# Documentation (generated)
+CFG_IMPLEMENTATION_PLAN.md
+OPCODES.md
+docs/ASYNC_IMPLEMENTATION_RESEARCH.md
 
 #uv-files
 uv.lock

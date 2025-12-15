@@ -17,133 +17,266 @@
 
 namespace nb = nanobind;
 
-namespace justjit {
-
-struct Instruction {
-    uint16_t opcode;
-    uint16_t arg;
-    int32_t argval;  // Actual target offset for jump instructions (can be negative for constants)
-    uint16_t offset;
-};
-
-class JITCore {
-public:
-    JITCore();
-    ~JITCore();  // Clean up stored Python references
-    
-    void set_opt_level(int level);
-    int get_opt_level() const;
-    nb::object get_callable(const std::string& name, int param_count);
-    nb::object get_int_callable(const std::string& name, int param_count);  // For integer-mode functions
-    bool compile_function(nb::list py_instructions, nb::list py_constants, nb::list py_names, nb::object py_globals_dict, nb::object py_builtins_dict, nb::list py_closure_cells, const std::string& name, int param_count = 2, int total_locals = 3, int nlocals = 3);
-    bool compile_int_function(nb::list py_instructions, nb::list py_constants, const std::string& name, int param_count = 2, int total_locals = 3);  // Integer-only mode
-    uint64_t lookup_symbol(const std::string& name);
-    
-    // Helper to declare Python C API functions in LLVM module
-    void declare_python_api_functions(llvm::Module* module, llvm::IRBuilder<>* builder);
-    
+namespace justjit
+{
     // =========================================================================
-    // Python C API function declarations (public for modular opcode handlers)
+    // JIT Generator State Machine
     // =========================================================================
-    llvm::Function* py_list_new_func = nullptr;
-    llvm::Function* py_list_setitem_func = nullptr;
-    llvm::Function* py_object_getitem_func = nullptr;
-    llvm::Function* py_incref_func = nullptr;
-    llvm::Function* py_decref_func = nullptr;
-    llvm::Function* py_long_fromlong_func = nullptr;
-    llvm::Function* py_tuple_new_func = nullptr;
-    llvm::Function* py_tuple_setitem_func = nullptr;
-    llvm::Function* py_number_add_func = nullptr;
-    llvm::Function* py_number_subtract_func = nullptr;
-    llvm::Function* py_number_multiply_func = nullptr;
-    llvm::Function* py_number_truedivide_func = nullptr;
-    llvm::Function* py_number_floordivide_func = nullptr;
-    llvm::Function* py_number_remainder_func = nullptr;
-    llvm::Function* py_number_power_func = nullptr;
-    llvm::Function* py_number_negative_func = nullptr;
-    llvm::Function* py_object_str_func = nullptr;
-    llvm::Function* py_unicode_concat_func = nullptr;
-    llvm::Function* py_object_getattr_func = nullptr;
-    llvm::Function* py_object_setattr_func = nullptr;
-    llvm::Function* py_object_setitem_func = nullptr;
-    llvm::Function* py_object_call_func = nullptr;
-    llvm::Function* py_long_aslong_func = nullptr;
-    llvm::Function* py_object_richcompare_bool_func = nullptr;
-    llvm::Function* py_object_istrue_func = nullptr;
-    
-    // Additional Python C API functions for more opcodes
-    llvm::Function* py_number_invert_func = nullptr;
-    llvm::Function* py_object_not_func = nullptr;
-    llvm::Function* py_object_getiter_func = nullptr;
-    llvm::Function* py_iter_next_func = nullptr;
-    llvm::Function* py_dict_new_func = nullptr;
-    llvm::Function* py_dict_setitem_func = nullptr;
-    llvm::Function* py_set_new_func = nullptr;
-    llvm::Function* py_set_add_func = nullptr;
-    llvm::Function* py_list_append_func = nullptr;
-    llvm::Function* py_list_extend_func = nullptr;
-    llvm::Function* py_sequence_contains_func = nullptr;
-    llvm::Function* py_number_lshift_func = nullptr;
-    llvm::Function* py_number_rshift_func = nullptr;
-    llvm::Function* py_number_and_func = nullptr;
-    llvm::Function* py_number_or_func = nullptr;
-    llvm::Function* py_number_xor_func = nullptr;
-    llvm::Function* py_cell_get_func = nullptr;
-    llvm::Function* py_tuple_getitem_func = nullptr;
-    llvm::Function* py_tuple_size_func = nullptr;
-    llvm::Function* py_slice_new_func = nullptr;
-    llvm::Function* py_sequence_getslice_func = nullptr;
-    llvm::Function* py_sequence_setslice_func = nullptr;
-    llvm::Function* py_object_delitem_func = nullptr;
-    llvm::Function* py_set_update_func = nullptr;
-    llvm::Function* py_dict_update_func = nullptr;
-    llvm::Function* py_dict_merge_func = nullptr;
-    llvm::Function* py_dict_getitem_func = nullptr;  // For runtime global lookup (Bug #4 fix)
-    
-    // Exception handling API functions (Bug #3 fix)
-    llvm::Function* py_err_occurred_func = nullptr;
-    llvm::Function* py_err_fetch_func = nullptr;
-    llvm::Function* py_err_restore_func = nullptr;
-    llvm::Function* py_err_set_object_func = nullptr;
-    llvm::Function* py_err_set_string_func = nullptr;
-    llvm::Function* py_err_clear_func = nullptr;
-    llvm::Function* py_exception_matches_func = nullptr;
-    llvm::Function* py_object_type_func = nullptr;
-    llvm::Function* py_exception_set_cause_func = nullptr;
-    
-private:
-    std::unique_ptr<llvm::orc::LLJIT> jit;
-    std::unique_ptr<llvm::LLVMContext> context;
-    int opt_level = 3;
-    
-    // Store references to Python objects we've incref'd (for cleanup)
-    std::vector<PyObject*> stored_constants;
-    std::vector<PyObject*> stored_names;
-    
-    // Runtime globals/builtins dicts for LOAD_GLOBAL (Bug #4 fix)
-    PyObject* globals_dict_ptr = nullptr;
-    PyObject* builtins_dict_ptr = nullptr;
-    
-    // Cache of already-compiled function names to prevent duplicate symbol errors
-    std::unordered_set<std::string> compiled_functions;
-    
-    // Closure cells storage (for COPY_FREE_VARS / LOAD_DEREF)
-    std::vector<PyObject*> stored_closure_cells;
-    
-    nb::object create_callable_0(uint64_t func_ptr);
-    nb::object create_callable_1(uint64_t func_ptr);
-    nb::object create_callable_2(uint64_t func_ptr);
-    nb::object create_callable_3(uint64_t func_ptr);
-    nb::object create_callable_4(uint64_t func_ptr);
-    
-    // Integer-mode callable generators (native i64 -> i64 functions)
-    nb::object create_int_callable_0(uint64_t func_ptr);
-    nb::object create_int_callable_1(uint64_t func_ptr);
-    nb::object create_int_callable_2(uint64_t func_ptr);
-    nb::object create_int_callable_3(uint64_t func_ptr);
-    nb::object create_int_callable_4(uint64_t func_ptr);
-    
-    void optimize_module(llvm::Module& module, llvm::Function* func);
-};
+    // Generator implementation using a state machine approach.
+    // Each generator function is compiled into a "step" function that:
+    //   - Takes (state*, locals_array*, sent_value) as input
+    //   - Returns the yielded value (or NULL if done/error)
+    //   - Updates state to indicate next resume point
+    //
+    // State values:
+    //   0 = initial (not started)
+    //   1..N = resume points after yield
+    //   -1 = completed (returned)
+    //   -2 = error
+    // =========================================================================
+
+    // Forward declaration of the JIT generator object
+    struct JITGeneratorObject;
+
+    // Type definition for generator step function
+    // Signature: PyObject* step_func(int32_t* state, PyObject** locals, PyObject* sent_value)
+    typedef PyObject* (*GeneratorStepFunc)(int32_t* state, PyObject** locals, PyObject* sent_value);
+
+    // JIT Generator object - a Python object that wraps a compiled generator
+    struct JITGeneratorObject {
+        PyObject_HEAD
+        int32_t state;              // Current state (0=initial, >0=suspended at yield N, -1=done)
+        PyObject** locals;          // Array of local variables (preserved across yields)
+        Py_ssize_t num_locals;      // Number of local variable slots
+        GeneratorStepFunc step_func; // Pointer to the compiled step function
+        PyObject* name;             // Generator name (for repr)
+        PyObject* qualname;         // Qualified name
+    };
+
+    // Python type object for JIT generators (defined in jit_core.cpp)
+    extern PyTypeObject JITGenerator_Type;
+
+    // Helper functions for JIT generator
+    PyObject* JITGenerator_New(GeneratorStepFunc step_func, Py_ssize_t num_locals,
+                               PyObject* name, PyObject* qualname);
+    PyObject* JITGenerator_Send(JITGeneratorObject* gen, PyObject* value);
+
+    // =========================================================================
+    // JIT Coroutine Object
+    // =========================================================================
+    // Coroutines are similar to generators but implement the coroutine protocol:
+    // - __await__() returns self (the awaitable iterator)
+    // - send(), throw(), close() work the same as generators
+    // - SEND opcode handles yield-from/await delegation
+    // =========================================================================
+
+    // Forward declaration of the JIT coroutine object
+    struct JITCoroutineObject;
+
+    // JIT Coroutine object - wraps a compiled async function
+    struct JITCoroutineObject {
+        PyObject_HEAD
+        int32_t state;              // Current state (0=initial, >0=suspended at await, -1=done)
+        PyObject** locals;          // Array of local variables (preserved across awaits)
+        Py_ssize_t num_locals;      // Number of local variable slots
+        GeneratorStepFunc step_func; // Pointer to the compiled step function (same signature)
+        PyObject* name;             // Coroutine name (for repr)
+        PyObject* qualname;         // Qualified name
+        PyObject* awaiting;         // Currently awaited object (for SEND delegation)
+    };
+
+    // Python type object for JIT coroutines (defined in jit_core.cpp)
+    extern PyTypeObject JITCoroutine_Type;
+
+    // Helper functions for JIT coroutine
+    PyObject* JITCoroutine_New(GeneratorStepFunc step_func, Py_ssize_t num_locals,
+                               PyObject* name, PyObject* qualname);
+    PyObject* JITCoroutine_Send(JITCoroutineObject* coro, PyObject* value);
+
+    struct Instruction
+    {
+        uint16_t opcode;
+        uint16_t arg;
+        int32_t argval; // Actual target offset for jump instructions (can be negative for constants)
+        uint16_t offset;
+    };
+
+    // Exception table entry for try/except handling
+    struct ExceptionTableEntry
+    {
+        int32_t start;  // Start offset of protected range
+        int32_t end;    // End offset of protected range
+        int32_t target; // Handler offset (PUSH_EXC_INFO location)
+        int32_t depth;  // Stack depth to unwind to
+        bool lasti;     // Whether to push last instruction offset
+    };
+
+    class JITCore
+    {
+    public:
+        JITCore();
+        ~JITCore(); // Clean up stored Python references
+
+        void set_opt_level(int level);
+        int get_opt_level() const;
+        void set_dump_ir(bool dump);
+        bool get_dump_ir() const;
+        std::string get_last_ir() const;
+        nb::object get_callable(const std::string &name, int param_count);
+        nb::object get_int_callable(const std::string &name, int param_count); // For integer-mode functions
+        bool compile_function(nb::list py_instructions, nb::list py_constants, nb::list py_names, nb::object py_globals_dict, nb::object py_builtins_dict, nb::list py_closure_cells, nb::list py_exception_table, const std::string &name, int param_count = 2, int total_locals = 3, int nlocals = 3);
+        bool compile_int_function(nb::list py_instructions, nb::list py_constants, const std::string &name, int param_count = 2, int total_locals = 3); // Integer-only mode
+        
+        // Generator compilation - transforms generator function to state machine step function
+        bool compile_generator(nb::list py_instructions, nb::list py_constants, nb::list py_names, 
+                              nb::object py_globals_dict, nb::object py_builtins_dict, 
+                              nb::list py_closure_cells, nb::list py_exception_table,
+                              const std::string &name, int param_count, int total_locals, int nlocals);
+        
+        // Get a generator factory callable (returns a new generator on each call)
+        nb::object get_generator_callable(const std::string &name, int param_count, int total_locals,
+                                          nb::object func_name, nb::object func_qualname);
+        
+        uint64_t lookup_symbol(const std::string &name);
+
+        // Helper to declare Python C API functions in LLVM module
+        void declare_python_api_functions(llvm::Module *module, llvm::IRBuilder<> *builder);
+
+        // =========================================================================
+        // Python C API function declarations (public for modular opcode handlers)
+        // =========================================================================
+        llvm::Function *py_list_new_func = nullptr;
+        llvm::Function *py_list_setitem_func = nullptr;
+        llvm::Function *py_object_getitem_func = nullptr;
+        llvm::Function *py_incref_func = nullptr;
+        llvm::Function *py_xincref_func = nullptr; // NULL-safe Py_XINCREF
+        llvm::Function *py_decref_func = nullptr;
+        llvm::Function *py_long_fromlong_func = nullptr;
+        llvm::Function *py_long_fromlonglong_func = nullptr; // For 64-bit int conversion (Windows fix)
+        llvm::Function *py_tuple_new_func = nullptr;
+        llvm::Function *py_tuple_setitem_func = nullptr;
+        llvm::Function *py_number_add_func = nullptr;
+        llvm::Function *py_number_subtract_func = nullptr;
+        llvm::Function *py_number_multiply_func = nullptr;
+        llvm::Function *py_number_matrixmultiply_func = nullptr;
+        llvm::Function *py_number_truedivide_func = nullptr;
+        llvm::Function *py_number_floordivide_func = nullptr;
+        llvm::Function *py_number_remainder_func = nullptr;
+        llvm::Function *py_number_power_func = nullptr;
+        llvm::Function *py_number_negative_func = nullptr;
+        llvm::Function *py_number_positive_func = nullptr; // For unary + operator (INTRINSIC_UNARY_POSITIVE)
+        llvm::Function *py_object_str_func = nullptr;
+        llvm::Function *py_unicode_concat_func = nullptr;
+        llvm::Function *py_object_getattr_func = nullptr;
+        llvm::Function *py_object_setattr_func = nullptr;
+        llvm::Function *py_object_setitem_func = nullptr;
+        llvm::Function *py_object_call_func = nullptr;
+        llvm::Function *py_long_aslong_func = nullptr;
+        llvm::Function *py_object_richcompare_bool_func = nullptr;
+        llvm::Function *py_object_istrue_func = nullptr;
+        llvm::Function *py_object_isinstance_func = nullptr;
+
+        // Additional Python C API functions for more opcodes
+        llvm::Function *py_number_invert_func = nullptr;
+        llvm::Function *py_object_not_func = nullptr;
+        llvm::Function *py_object_getiter_func = nullptr;
+        llvm::Function *py_iter_next_func = nullptr;
+        llvm::Function *py_dict_new_func = nullptr;
+        llvm::Function *py_dict_setitem_func = nullptr;
+        llvm::Function *py_set_new_func = nullptr;
+        llvm::Function *py_set_add_func = nullptr;
+        llvm::Function *py_list_append_func = nullptr;
+        llvm::Function *py_list_extend_func = nullptr;
+        llvm::Function *py_sequence_contains_func = nullptr;
+        llvm::Function *py_number_lshift_func = nullptr;
+        llvm::Function *py_number_rshift_func = nullptr;
+        llvm::Function *py_number_and_func = nullptr;
+        llvm::Function *py_number_or_func = nullptr;
+        llvm::Function *py_number_xor_func = nullptr;
+        llvm::Function *py_cell_get_func = nullptr;
+        llvm::Function *py_tuple_getitem_func = nullptr;
+        llvm::Function *py_tuple_size_func = nullptr;
+        llvm::Function *py_slice_new_func = nullptr;
+        llvm::Function *py_sequence_getslice_func = nullptr;
+        llvm::Function *py_sequence_setslice_func = nullptr;
+        llvm::Function *py_sequence_size_func = nullptr;    // Py_ssize_t PySequence_Size(PyObject*)
+        llvm::Function *py_sequence_tuple_func = nullptr;   // PyObject* PySequence_Tuple(PyObject*)
+        llvm::Function *py_sequence_getitem_func = nullptr; // PyObject* PySequence_GetItem(PyObject*, Py_ssize_t)
+        llvm::Function *py_object_delitem_func = nullptr;
+        llvm::Function *py_set_update_func = nullptr;
+        llvm::Function *py_dict_update_func = nullptr;
+        llvm::Function *py_dict_merge_func = nullptr;
+        llvm::Function *py_dict_getitem_func = nullptr; // For runtime global lookup (Bug #4 fix)
+
+        // Exception handling API functions (Bug #3 fix)
+        llvm::Function *py_err_occurred_func = nullptr;
+        llvm::Function *py_err_fetch_func = nullptr;
+        llvm::Function *py_err_restore_func = nullptr;
+        llvm::Function *py_err_set_object_func = nullptr;
+        llvm::Function *py_err_set_string_func = nullptr;
+        llvm::Function *py_err_clear_func = nullptr;
+        llvm::Function *py_exception_matches_func = nullptr;
+        llvm::Function *py_object_type_func = nullptr;
+        llvm::Function *py_exception_set_cause_func = nullptr;
+
+        // Attribute/name deletion API functions
+        llvm::Function *py_object_delattr_func = nullptr; // int PyObject_DelAttr(PyObject*, PyObject*)
+        llvm::Function *py_dict_delitem_func = nullptr;   // int PyDict_DelItem(PyObject*, PyObject*)
+        llvm::Function *py_cell_set_func = nullptr;       // int PyCell_Set(PyObject*, PyObject*)
+
+        // Format/string API functions (f-string support)
+        llvm::Function *py_object_format_func = nullptr; // PyObject* PyObject_Format(PyObject*, PyObject*)
+        llvm::Function *py_object_repr_func = nullptr;   // PyObject* PyObject_Repr(PyObject*)
+        llvm::Function *py_object_ascii_func = nullptr;  // PyObject* PyObject_ASCII(PyObject*)
+
+        // Import API functions
+        llvm::Function *py_import_importmodule_func = nullptr; // PyObject* PyImport_ImportModuleLevelObject(...)
+
+        // Function creation API (MAKE_FUNCTION / SET_FUNCTION_ATTRIBUTE opcodes)
+        llvm::Function *py_function_new_func = nullptr;             // PyObject* PyFunction_New(PyObject* code, PyObject* globals)
+        llvm::Function *py_function_set_defaults_func = nullptr;    // int PyFunction_SetDefaults(PyObject* func, PyObject* defaults)
+        llvm::Function *py_function_set_kwdefaults_func = nullptr;  // int PyFunction_SetKwDefaults(PyObject* func, PyObject* kwdefaults)
+        llvm::Function *py_function_set_annotations_func = nullptr; // int PyFunction_SetAnnotations(PyObject* func, PyObject* annotations)
+        llvm::Function *py_function_set_closure_func = nullptr;     // int PyFunction_SetClosure(PyObject* func, PyObject* closure)
+
+        // JIT helper functions
+        llvm::Function *jit_call_with_kwargs_func = nullptr; // PyObject* jit_call_with_kwargs(...) for CALL_KW
+
+    private:
+        std::unique_ptr<llvm::orc::LLJIT> jit;
+        std::unique_ptr<llvm::LLVMContext> context;
+        int opt_level = 3;
+        bool dump_ir = false;
+        std::string last_ir;
+
+        // Store references to Python objects we've incref'd (for cleanup)
+        std::vector<PyObject *> stored_constants;
+        std::vector<PyObject *> stored_names;
+
+        // Runtime globals/builtins dicts for LOAD_GLOBAL (Bug #4 fix)
+        PyObject *globals_dict_ptr = nullptr;
+        PyObject *builtins_dict_ptr = nullptr;
+
+        // Cache of already-compiled function names to prevent duplicate symbol errors
+        std::unordered_set<std::string> compiled_functions;
+
+        // Closure cells storage (for COPY_FREE_VARS / LOAD_DEREF)
+        std::vector<PyObject *> stored_closure_cells;
+
+        nb::object create_callable_0(uint64_t func_ptr);
+        nb::object create_callable_1(uint64_t func_ptr);
+        nb::object create_callable_2(uint64_t func_ptr);
+        nb::object create_callable_3(uint64_t func_ptr);
+        nb::object create_callable_4(uint64_t func_ptr);
+
+        // Integer-mode callable generators (native i64 -> i64 functions)
+        nb::object create_int_callable_0(uint64_t func_ptr);
+        nb::object create_int_callable_1(uint64_t func_ptr);
+        nb::object create_int_callable_2(uint64_t func_ptr);
+        nb::object create_int_callable_3(uint64_t func_ptr);
+        nb::object create_int_callable_4(uint64_t func_ptr);
+
+        void optimize_module(llvm::Module &module, llvm::Function *func);
+    };
 
 }
