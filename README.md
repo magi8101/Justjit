@@ -570,5 +570,4 @@ Built with:
 
 - **Repository**: [github.com/magi8101/justjit](https://github.com/magi8101/justjit)
 - **Issues**: [github.com/magi8101/justjit/issues](https://github.com/magi8101/justjit/issues)
-- **PyPI**: [pypi.org/project/justjit](https://pypi.org/project/justjit/)
-]]>
+

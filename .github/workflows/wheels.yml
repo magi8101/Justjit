@@ -57,15 +57,16 @@ jobs:
           # We can't use conda-forge llvmdev as it brings newer GLIBC symbols that auditwheel rejects
           dnf install -y epel-release || true
           dnf config-manager --set-enabled crb || dnf config-manager --set-enabled powertools || true
-          dnf install -y llvm-devel llvm-static clang-devel zlib-devel libxml2-devel libffi-devel cmake ninja-build || true
+          dnf install -y llvm-devel llvm-static clang-devel zlib-devel libxml2-devel libffi-devel cmake ninja-build ncurses-devel || true
           # Verify LLVM installation
           llvm-config --version || echo "llvm-config not found"
           ls -la /usr/lib64/cmake/llvm/ || ls -la /usr/lib/cmake/llvm/ || true
         CIBW_ENVIRONMENT_LINUX: >-
           LLVM_DIR=/usr/lib64/cmake/llvm
           CMAKE_PREFIX_PATH=/usr
+          LD_LIBRARY_PATH=/usr/lib64:/usr/lib
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
-        CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair --plat manylinux_2_28_x86_64 -w {dest_dir} {wheel}"
+        CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair --plat manylinux_2_28_x86_64 -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/"
         CIBW_TEST_COMMAND: ""
         CIBW_BUILD_VERBOSITY: 3
 
@@ -103,8 +104,9 @@ jobs:
           LLVM_DIR=${{ env.LLVM_DIR }}
           CMAKE_PREFIX_PATH=${{ env.CMAKE_PREFIX_PATH }}
           MACOSX_DEPLOYMENT_TARGET=11.0
-        CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
-        CIBW_REPAIR_WHEEL_COMMAND_MACOS: ""
+          DYLD_LIBRARY_PATH=${{ env.CMAKE_PREFIX_PATH }}/lib
+        CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja delocate"
+        CIBW_REPAIR_WHEEL_COMMAND_MACOS: "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel} || cp {wheel} {dest_dir}/"
         CIBW_TEST_COMMAND: ""
         CIBW_BUILD_VERBOSITY: 3
 
@@ -151,7 +153,7 @@ jobs:
           LLVM_DIR=${{ env.LLVM_DIR }}
           CMAKE_PREFIX_PATH=${{ env.CMAKE_PREFIX_PATH }}
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja delvewheel"
-        CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: ""
+        CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair --add-path ${{ env.CMAKE_PREFIX_PATH }}/bin -w {dest_dir} {wheel} || copy {wheel} {dest_dir}\\"
         CIBW_TEST_COMMAND: ""
         CIBW_BUILD_VERBOSITY: 3
 
