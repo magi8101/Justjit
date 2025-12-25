@@ -17,6 +17,7 @@
 #include <set>
 #include <map>
 #include <cstdint>
+#include <cstring>
 #include <sstream>
 
 // Python code object flags - define if not available
@@ -108,25 +109,32 @@ extern "C" PyObject *jit_call_with_kwargs(
 // - Otherwise, call __await__ and return the iterator
 extern "C" PyObject *JITGetAwaitable(PyObject *obj)
 {
-    // Check if it's a native coroutine
-    if (PyCoro_CheckExact(obj)) {
+    // Check if it's a native coroutine by checking type name
+    // (avoids using PyCoro_CheckExact which has symbol issues on some platforms)
+    const char* type_name = Py_TYPE(obj)->tp_name;
+    if (strcmp(type_name, "coroutine") == 0) {
         Py_INCREF(obj);
         return obj;
     }
     
     // Check if it's a generator with CO_ITERABLE_COROUTINE flag
     // (decorated with @types.coroutine)
-    if (PyGen_CheckExact(obj)) {
-        // In Python 3.13+, use PyGen_GetCode() instead of accessing gi_code directly
-        PyCodeObject *code = PyGen_GetCode((PyGenObject *)obj);
-        if (code != NULL) {
-            int flags = code->co_flags;
-            Py_DECREF(code);  // PyGen_GetCode returns a new reference
-            if (flags & CO_ITERABLE_COROUTINE) {
-                Py_INCREF(obj);
-                return obj;
+    if (strcmp(type_name, "generator") == 0) {
+        // Access gi_code attribute to get code flags
+        PyObject *gi_code = PyObject_GetAttrString(obj, "gi_code");
+        if (gi_code != NULL) {
+            PyObject *co_flags_obj = PyObject_GetAttrString(gi_code, "co_flags");
+            Py_DECREF(gi_code);
+            if (co_flags_obj != NULL) {
+                long flags = PyLong_AsLong(co_flags_obj);
+                Py_DECREF(co_flags_obj);
+                if (flags & CO_ITERABLE_COROUTINE) {
+                    Py_INCREF(obj);
+                    return obj;
+                }
             }
         }
+        PyErr_Clear();  // Clear any errors from attribute access
     }
     
     // Try to get __await__ method
@@ -11672,11 +11680,14 @@ namespace justjit
             PyObject* result = NULL;
             
             // Try to send value to the awaited object
-            if (PyGen_Check(coro->awaiting) || PyCoro_CheckExact(coro->awaiting)) {
+            const char* awaiting_type = Py_TYPE(coro->awaiting)->tp_name;
+            bool is_gen_or_coro = (strcmp(awaiting_type, "generator") == 0 || 
+                                   strcmp(awaiting_type, "coroutine") == 0);
+            if (is_gen_or_coro) {
                 // Native coroutine or generator - use send
                 PyObject* send_meth = PyObject_GetAttrString(coro->awaiting, "send");
                 if (send_meth != NULL) {
-                    result = PyObject_CallOneArg(send_meth, value);
+                    result = PyObject_CallFunctionObjArgs(send_meth, value, NULL);
                     Py_DECREF(send_meth);
                 }
             } else {
