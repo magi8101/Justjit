@@ -24,8 +24,6 @@ jobs:
         include:
           - os: ubuntu-latest
             arch: x86_64
-          - os: macos-13
-            arch: x86_64
           - os: macos-14
             arch: arm64
           - os: windows-latest
@@ -39,7 +37,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.12'
+        python-version: '3.13'
 
     # ===== Build Wheels (Linux) =====
     # Uses system LLVM from EPEL/CRB for manylinux_2_28 ABI compatibility
@@ -47,7 +45,7 @@ jobs:
       if: runner.os == 'Linux'
       uses: pypa/cibuildwheel@v2.21
       env:
-        CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
+        CIBW_BUILD: "cp313-*"
         CIBW_SKIP: "*-musllinux_* *-win32 *-manylinux_i686"
         CIBW_ARCHS: ${{ matrix.arch }}
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
@@ -97,7 +95,7 @@ jobs:
       if: runner.os == 'macOS'
       uses: pypa/cibuildwheel@v2.21
       env:
-        CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
+        CIBW_BUILD: "cp313-*"
         CIBW_SKIP: "*-musllinux_* *-win32 *-manylinux_i686"
         CIBW_ARCHS: ${{ matrix.arch }}
         CIBW_ENVIRONMENT: >
@@ -146,7 +144,7 @@ jobs:
       if: runner.os == 'Windows'
       uses: pypa/cibuildwheel@v2.21
       env:
-        CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
+        CIBW_BUILD: "cp313-*"
         CIBW_SKIP: "*-win32"
         CIBW_ARCHS: ${{ matrix.arch }}
         CIBW_ENVIRONMENT: >

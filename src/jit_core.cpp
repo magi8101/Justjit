@@ -1,6 +1,7 @@
 #include "jit_core.h"
 #include "opcodes.h"
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Passes/PassBuilder.h>
@@ -105,7 +106,7 @@ extern "C" PyObject *jit_call_with_kwargs(
 // - If it's a coroutine, return it directly
 // - If it's a generator (from types.coroutine decorator), return it
 // - Otherwise, call __await__ and return the iterator
-extern "C" PyObject *_PyJIT_GetAwaitable(PyObject *obj)
+extern "C" PyObject *JITGetAwaitable(PyObject *obj)
 {
     // Check if it's a native coroutine
     if (PyCoro_CheckExact(obj)) {
@@ -163,7 +164,7 @@ extern "C" PyObject *_PyJIT_GetAwaitable(PyObject *obj)
 // C helper function for MATCH_KEYS opcode
 // Extracts values from a mapping for the given keys tuple
 // Returns a tuple of values if all keys found, Py_None (incref'd) otherwise
-extern "C" PyObject *_PyJIT_MatchKeys(PyObject *subject, PyObject *keys)
+extern "C" PyObject *JITMatchKeys(PyObject *subject, PyObject *keys)
 {
     if (!PyTuple_Check(keys)) {
         Py_INCREF(Py_None);
@@ -203,7 +204,7 @@ extern "C" PyObject *_PyJIT_MatchKeys(PyObject *subject, PyObject *keys)
 // nargs = number of positional patterns (for __match_args__)
 // names = tuple of keyword attribute names
 // Returns tuple of matched attributes if successful, Py_None (incref'd) otherwise
-extern "C" PyObject *_PyJIT_MatchClass(PyObject *subject, PyObject *cls, int nargs, PyObject *names)
+extern "C" PyObject *JITMatchClass(PyObject *subject, PyObject *cls, int nargs, PyObject *names)
 {
     // First, check that subject is an instance of cls
     int is_instance = PyObject_IsInstance(subject, cls);
@@ -396,19 +397,19 @@ namespace justjit
             llvm::orc::ExecutorAddr::fromPtr(jit_xdecref),
             llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable};
 
-        // Register _PyJIT_GetAwaitable helper for GET_AWAITABLE opcode
-        helper_symbols[es.intern("_PyJIT_GetAwaitable")] = {
-            llvm::orc::ExecutorAddr::fromPtr(_PyJIT_GetAwaitable),
+        // Register JITGetAwaitable helper for GET_AWAITABLE opcode
+        helper_symbols[es.intern("JITGetAwaitable")] = {
+            llvm::orc::ExecutorAddr::fromPtr(JITGetAwaitable),
             llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable};
 
-        // Register _PyJIT_MatchKeys helper for MATCH_KEYS opcode
-        helper_symbols[es.intern("_PyJIT_MatchKeys")] = {
-            llvm::orc::ExecutorAddr::fromPtr(_PyJIT_MatchKeys),
+        // Register JITMatchKeys helper for MATCH_KEYS opcode
+        helper_symbols[es.intern("JITMatchKeys")] = {
+            llvm::orc::ExecutorAddr::fromPtr(JITMatchKeys),
             llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable};
 
-        // Register _PyJIT_MatchClass helper for MATCH_CLASS opcode
-        helper_symbols[es.intern("_PyJIT_MatchClass")] = {
-            llvm::orc::ExecutorAddr::fromPtr(_PyJIT_MatchClass),
+        // Register JITMatchClass helper for MATCH_CLASS opcode
+        helper_symbols[es.intern("JITMatchClass")] = {
+            llvm::orc::ExecutorAddr::fromPtr(JITMatchClass),
             llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable};
 
         // Register debug trace helpers
@@ -3721,13 +3722,13 @@ namespace justjit
                         stack[stack.size() - 2] = subject;
                     }
 
-                    // Call helper: PyObject* _PyJIT_MatchKeys(PyObject* subject, PyObject* keys)
+                    // Call helper: PyObject* JITMatchKeys(PyObject* subject, PyObject* keys)
                     // Returns tuple of values if all keys found, or None if any key missing
                     // The helper handles incref on the result
                     llvm::FunctionType *match_keys_helper_type = llvm::FunctionType::get(
                         ptr_type, {ptr_type, ptr_type}, false);
                     llvm::FunctionCallee match_keys_helper = module->getOrInsertFunction(
-                        "_PyJIT_MatchKeys", match_keys_helper_type);
+                        "JITMatchKeys", match_keys_helper_type);
                     llvm::Value *result = builder.CreateCall(match_keys_helper, {subject, keys}, "match_keys_result");
 
                     // The helper returns either a tuple (success) or None (failure)
@@ -3773,12 +3774,12 @@ namespace justjit
                         stack.back() = subject;
                     }
 
-                    // Call helper: PyObject* _PyJIT_MatchClass(subject, cls, nargs, names)
+                    // Call helper: PyObject* JITMatchClass(subject, cls, nargs, names)
                     // Returns tuple of matched attributes if successful, Py_None (incref'd) otherwise
                     llvm::FunctionType *match_class_helper_type = llvm::FunctionType::get(
                         ptr_type, {ptr_type, ptr_type, llvm::Type::getInt32Ty(*local_context), ptr_type}, false);
                     llvm::FunctionCallee match_class_helper = module->getOrInsertFunction(
-                        "_PyJIT_MatchClass", match_class_helper_type);
+                        "JITMatchClass", match_class_helper_type);
                     llvm::Value *nargs_val = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*local_context), nargs);
                     llvm::Value *result = builder.CreateCall(match_class_helper, {subject, cls, nargs_val, names}, "match_class_result");
 
@@ -9958,7 +9959,7 @@ namespace justjit
                     llvm::FunctionType *helper_type = llvm::FunctionType::get(
                         ptr_type, {ptr_type}, false);
                     llvm::Function *get_awaitable_helper = llvm::cast<llvm::Function>(
-                        module->getOrInsertFunction("_PyJIT_GetAwaitable", helper_type).getCallee());
+                        module->getOrInsertFunction("JITGetAwaitable", helper_type).getCallee());
                     
                     llvm::Value *awaitable = builder.CreateCall(get_awaitable_helper, {obj});
                     
