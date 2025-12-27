@@ -9327,7 +9327,7 @@ namespace justjit
                     {
                         llvm::Value *div_result = builder.CreateFDiv(lhs, rhs, "fdiv_floor");
                         // Call floor intrinsic
-                        llvm::Function *floor_fn = llvm::Intrinsic::getOrInsertDeclaration(module.get(), llvm::Intrinsic::floor, {f64_type});
+                        llvm::Function *floor_fn = llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::floor, {f64_type});
                         result = builder.CreateCall(floor_fn, {div_result}, "floor");
                         break;
                     }
@@ -9336,7 +9336,7 @@ namespace justjit
                         break;
                     case 8: // POWER
                     {
-                        llvm::Function *pow_fn = llvm::Intrinsic::getOrInsertDeclaration(module.get(), llvm::Intrinsic::pow, {f64_type});
+                        llvm::Function *pow_fn = llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::pow, {f64_type});
                         result = builder.CreateCall(pow_fn, {lhs, rhs}, "pow");
                         break;
                     }
