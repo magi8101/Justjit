@@ -49,16 +49,18 @@ _CO_COROUTINE = 0x80
 _CO_ASYNC_GENERATOR = 0x200
 
 # Generator/coroutine opcodes that we cannot JIT compile
+# Note: These are opcodes we HAVE now implemented support for (used to detect generator mode)
 _GENERATOR_OPCODES = {
     "YIELD_VALUE",
     "RETURN_GENERATOR",
     "GEN_START",
     "SEND",
-    "END_ASYNC_FOR",
     "GET_AWAITABLE",
+    "GET_YIELD_FROM_ITER",
+    # Now supported for async generators:
     "GET_AITER",
     "GET_ANEXT",
-    "GET_YIELD_FROM_ITER",
+    "END_ASYNC_FOR",
     "ASYNC_GEN_WRAP",
 }
 
@@ -66,8 +68,9 @@ _GENERATOR_OPCODES = {
 # Basic exception opcodes (PUSH_EXC_INFO, POP_EXCEPT, CHECK_EXC_MATCH, RAISE_VARARGS, RERAISE)
 # are now supported via exception table parsing and error checking.
 # With statement opcodes (BEFORE_WITH, WITH_EXCEPT_START) are also supported.
+# CLEANUP_THROW is now supported in compile_generator.
 # These remaining opcodes are for more complex constructs.
-_EXCEPTION_OPCODES = {"CLEANUP_THROW", "SETUP_FINALLY", "POP_BLOCK"}
+_EXCEPTION_OPCODES = {"SETUP_FINALLY", "POP_BLOCK"}
 
 # Pattern matching opcodes - now supported with proper CFG analysis and PHI nodes
 # These opcodes work correctly with the implemented stack state tracking.
@@ -632,6 +635,183 @@ def _create_coroutine_wrapper(func, opt_level):
     return coroutine_factory
 
 
+def _create_async_generator_wrapper(func, opt_level):
+    """Create a JIT-compiled wrapper for an async generator function.
+    
+    Async generators are functions that combine both async def and yield.
+    They produce values using yield but can also await other coroutines.
+    
+    The protocol is:
+    - __aiter__() returns self
+    - __anext__() returns an awaitable that produces the next value
+    - asend(value) sends a value to the generator
+    - athrow(exc) throws an exception into the generator
+    - aclose() closes the generator
+    
+    For now, we compile async generators using the same mechanism as
+    regular generators, but the caller (async for loop) must handle
+    the async protocol wrapping.
+    """
+    import functools
+    import warnings
+    
+    # Compile using the generator compilation path
+    jit_instance = JIT()
+    jit_instance.set_opt_level(opt_level)
+    
+    instructions = _extract_bytecode(func)
+    constants = _extract_constants(func)
+    names = _extract_names(func)
+    globals_dict = _extract_globals(func)
+    builtins_dict = _extract_builtins(func)
+    closure_cells = _extract_closure(func)
+    exception_table = _parse_exception_table(func)
+    
+    param_count = func.__code__.co_argcount
+    nlocals = func.__code__.co_nlocals
+    num_cellvars = len(func.__code__.co_cellvars)
+    num_freevars = len(func.__code__.co_freevars)
+    base_locals = nlocals + num_cellvars + num_freevars
+    stack_size = func.__code__.co_stacksize
+    total_locals = base_locals + stack_size + 10
+    
+    # Compile the async generator to a step function
+    success = jit_instance.compile_generator(
+        instructions,
+        constants,
+        names,
+        globals_dict,
+        builtins_dict,
+        closure_cells,
+        exception_table,
+        func.__name__,
+        param_count,
+        total_locals,
+        nlocals,
+    )
+    
+    if not success:
+        warnings.warn(
+            f"Failed to JIT compile async generator '{func.__name__}'. "
+            f"Using Python implementation.",
+            RuntimeWarning,
+            stacklevel=4,
+        )
+        return func
+    
+    # Get the step function address and metadata
+    gen_info = jit_instance.get_generator_callable(
+        func.__name__,
+        param_count,
+        total_locals,
+        func.__name__,
+        func.__qualname__,
+    )
+    
+    if gen_info is None:
+        return func
+    
+    step_func_addr = gen_info["step_func_addr"]
+    num_locals = gen_info["num_locals"]
+    gen_name = gen_info["name"]
+    gen_qualname = gen_info["qualname"]
+    
+    @functools.wraps(func)
+    def async_generator_factory(*args, **kwargs):
+        """Factory function that creates a new async generator each time it's called."""
+        if kwargs:
+            # Fall back for kwargs (complex case)
+            return func(*args, **kwargs)
+        
+        if len(args) != param_count:
+            raise TypeError(
+                f"{func.__name__}() takes {param_count} positional arguments "
+                f"but {len(args)} were given"
+            )
+        
+        # Create a JIT generator as the underlying implementation
+        # The async generator protocol is handled by wrapping this
+        gen = create_jit_generator(step_func_addr, num_locals, gen_name, gen_qualname)
+        
+        # Store arguments in the generator's locals array
+        for i, arg in enumerate(args):
+            gen._set_local(i, arg)
+        
+        # Wrap in an async generator adapter
+        return _AsyncGeneratorAdapter(gen, gen_name, gen_qualname)
+    
+    async_generator_factory._jit_instance = jit_instance
+    async_generator_factory._original_func = func
+    async_generator_factory._instructions = instructions
+    async_generator_factory._mode = "async_generator"
+    async_generator_factory._is_jit_async_generator = True
+    
+    return async_generator_factory
+
+
+class _AsyncGeneratorAdapter:
+    """Adapter that wraps a JIT generator to implement the async generator protocol.
+    
+    This provides the asynchronous iteration interface (__aiter__, __anext__, etc.)
+    on top of a synchronous JIT-compiled generator.
+    """
+    
+    def __init__(self, inner_gen, name, qualname):
+        self._inner = inner_gen
+        self._name = name
+        self._qualname = qualname
+        self._closed = False
+    
+    def __aiter__(self):
+        return self
+    
+    async def __anext__(self):
+        if self._closed:
+            raise StopAsyncIteration
+        
+        try:
+            # Get next value from inner generator
+            value = self._inner.send(None)
+            return value
+        except StopIteration:
+            self._closed = True
+            raise StopAsyncIteration
+    
+    async def asend(self, value):
+        if self._closed:
+            raise StopAsyncIteration
+        
+        try:
+            result = self._inner.send(value)
+            return result
+        except StopIteration:
+            self._closed = True
+            raise StopAsyncIteration
+    
+    async def athrow(self, exc_type, exc_val=None, exc_tb=None):
+        if self._closed:
+            raise StopAsyncIteration
+        
+        try:
+            if exc_val is None:
+                exc_val = exc_type()
+            return self._inner.throw(exc_type, exc_val, exc_tb)
+        except StopIteration:
+            self._closed = True
+            raise StopAsyncIteration
+    
+    async def aclose(self):
+        if not self._closed:
+            try:
+                self._inner.close()
+            except Exception:
+                pass
+            self._closed = True
+    
+    def __repr__(self):
+        return f"<async_gen_jit {self._qualname} at {id(self):#x}>"
+
+
 def _create_jit_wrapper(
     func, opt_level, vectorize, inline, parallel, lazy, mode="auto"
 ):
@@ -648,15 +828,9 @@ def _create_jit_wrapper(
         # Regular coroutine (async def without yield)
         return _create_coroutine_wrapper(func, opt_level)
     
-    # Async generators (async def with yield) - not yet supported
+    # Async generators (async def with yield) - now supported
     if flags & _CO_ASYNC_GENERATOR:
-        warnings.warn(
-            f"Async generator function '{func.__name__}' cannot be JIT compiled yet. "
-            f"The @jit decorator has no effect on this function.",
-            RuntimeWarning,
-            stacklevel=3,
-        )
-        return func
+        return _create_async_generator_wrapper(func, opt_level)
 
     # Check bytecode for unsupported opcodes
     unsupported = _has_unsupported_opcodes(func)

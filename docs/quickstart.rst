@@ -30,7 +30,7 @@ Subsequent calls to ``add`` skip the compilation step and run the cached native 
 Choosing a Mode
 ---------------
 
-JustJIT supports 11 native modes. Each mode compiles your function to work with a specific data type, eliminating Python object overhead.
+JustJIT supports 12 native modes. Each mode compiles your function to work with a specific data type, eliminating Python object overhead.
 
 Integer Mode
 ^^^^^^^^^^^^
@@ -152,9 +152,46 @@ The generated code avoids:
 - Type checking on each iteration
 - Interpreter dispatch overhead
 
+Generator Support
+-----------------
+
+JustJIT can compile generator functions to native state machines:
+
+.. code-block:: python
+
+   @justjit.jit
+   def countdown(n):
+       while n > 0:
+           yield n
+           n = n - 1
+
+   for value in countdown(5):
+       print(value)  # Prints 5, 4, 3, 2, 1
+
+Generators are compiled as step functions with state persistence across yields. The ``send()`` and ``throw()`` methods are fully supported.
+
+Async Function Support
+----------------------
+
+Async functions (coroutines) are also supported:
+
+.. code-block:: python
+
+   import asyncio
+
+   @justjit.jit
+   async def async_add(a, b):
+       await asyncio.sleep(0.1)
+       return a + b
+
+   asyncio.run(async_add(1, 2))  # Returns 3
+
+The JIT compiler handles ``await``, delegating to awaited objects and properly extracting return values from ``StopIteration``.
+
 Next Steps
 ----------
 
 - :doc:`modes` - Learn about all 11 native modes
 - :doc:`api` - Full API reference
 - :doc:`performance` - Benchmarks and optimization tips
+- :doc:`async` - Deep dive into generator/coroutine compilation

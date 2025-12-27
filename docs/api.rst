@@ -205,6 +205,36 @@ The low-level JIT compiler class. Most users should use the ``@jit`` decorator i
 
       Compile a function to native code using optional_f64 mode.
 
+   .. py:method:: compile_generator(instructions, constants, names, globals_dict, builtins_dict, closure_cells, exception_table, name, param_count, total_locals, nlocals)
+
+      Compile a generator or async function to a state machine.
+
+      :param instructions: List of bytecode instruction dicts.
+      :param constants: List of constant values.
+      :param names: List of attribute/global names.
+      :param globals_dict: Function's globals dictionary.
+      :param builtins_dict: Builtins dictionary.
+      :param closure_cells: List of closure cells.
+      :param exception_table: Exception table entries.
+      :param name: Function name.
+      :param param_count: Number of parameters.
+      :param total_locals: Total local slots (locals + cells + freevars + stack).
+      :param nlocals: Number of local variables.
+      :returns: True if compilation succeeded.
+      :rtype: bool
+
+   .. py:method:: get_generator_callable(name, param_count, num_locals, gen_name, gen_qualname)
+
+      Get metadata for creating generator/coroutine objects.
+
+      :param name: Function name.
+      :param param_count: Number of parameters.
+      :param num_locals: Size of locals array.
+      :param gen_name: Generator's __name__.
+      :param gen_qualname: Generator's __qualname__.
+      :returns: Dict with step_func_addr, num_locals, name, qualname.
+      :rtype: dict
+
    .. py:method:: get_callable(name, param_count)
 
       Get a Python callable for a compiled function.

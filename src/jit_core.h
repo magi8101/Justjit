@@ -300,6 +300,13 @@ namespace justjit
         llvm::Function *jit_debug_trace_func = nullptr;      // void jit_debug_trace(...) for debugging
         llvm::Function *jit_debug_stack_func = nullptr;      // void jit_debug_stack(...) for debugging
 
+        // Async generator support functions
+        llvm::Function *jit_get_aiter_func = nullptr;        // PyObject* JITGetAIter(PyObject*) for GET_AITER
+        llvm::Function *jit_get_anext_func = nullptr;        // PyObject* JITGetANext(PyObject*) for GET_ANEXT
+        llvm::Function *jit_end_async_for_func = nullptr;    // int JITEndAsyncFor(PyObject*) for END_ASYNC_FOR
+        llvm::Function *jit_async_gen_wrap_func = nullptr;   // PyObject* JITAsyncGenWrap(PyObject*) for ASYNC_GEN_WRAP
+        llvm::Function *jit_async_gen_unwrap_func = nullptr; // PyObject* JITAsyncGenUnwrap(PyObject*) for unwrapping
+
     private:
         std::unique_ptr<llvm::orc::LLJIT> jit;
         std::unique_ptr<llvm::LLVMContext> context;

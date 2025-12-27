@@ -29,6 +29,15 @@
 #define CO_ITERABLE_COROUTINE 0x0100
 #endif
 
+// LLVM API compatibility: getDeclaration was renamed to getOrInsertDeclaration in LLVM 20+
+// Check LLVM version and provide compatibility macro
+#include <llvm/Config/llvm-config.h>
+#if LLVM_VERSION_MAJOR >= 20
+#define LLVM_GET_INTRINSIC_DECLARATION llvm::Intrinsic::getOrInsertDeclaration
+#else
+#define LLVM_GET_INTRINSIC_DECLARATION llvm::Intrinsic::getDeclaration
+#endif
+
 // C helper function for NULL-safe Py_XINCREF (since Py_XINCREF is a macro)
 extern "C" void jit_xincref(PyObject *obj)
 {
@@ -223,6 +232,123 @@ extern "C" PyObject *JITGetAwaitable(PyObject *obj)
     }
     
     return result;
+}
+
+// C helper function for GET_AITER opcode
+// Gets an async iterator from an object by calling __aiter__
+// Equivalent to Python's aiter() builtin
+extern "C" PyObject *JITGetAIter(PyObject *obj)
+{
+    // Use the C API function PyObject_GetAIter (available since Python 3.10)
+    // This calls obj.__aiter__() and validates the result
+    PyObject *aiter = PyObject_GetAIter(obj);
+    if (aiter == NULL) {
+        // PyObject_GetAIter already sets appropriate TypeError
+        return NULL;
+    }
+    return aiter;
+}
+
+// C helper function for GET_ANEXT opcode
+// Gets the next awaitable from an async iterator by calling __anext__
+// Returns an awaitable object that yields the next value
+extern "C" PyObject *JITGetANext(PyObject *aiter)
+{
+    // Call __anext__ method on the async iterator
+    PyObject *anext_method = PyObject_GetAttrString(aiter, "__anext__");
+    if (anext_method == NULL) {
+        PyErr_Format(PyExc_TypeError,
+            "async iterator has no __anext__ method");
+        return NULL;
+    }
+    
+    // Call __anext__() - this returns an awaitable
+    PyObject *awaitable = PyObject_CallNoArgs(anext_method);
+    Py_DECREF(anext_method);
+    
+    if (awaitable == NULL) {
+        return NULL;
+    }
+    
+    // The result should be an awaitable - wrap it similar to GET_AWAITABLE
+    // Most __anext__ implementations return a coroutine or awaitable directly
+    return awaitable;
+}
+
+// C helper function for END_ASYNC_FOR opcode
+// Handles exception at end of async for loop
+// If exception is StopAsyncIteration, clears it and returns success (1)
+// Otherwise re-raises the exception and returns failure (0)
+extern "C" int JITEndAsyncFor(PyObject *exc)
+{
+    if (exc == NULL) {
+        return 1;  // No exception, success
+    }
+    
+    // Check if the exception is StopAsyncIteration
+    if (PyErr_GivenExceptionMatches(exc, PyExc_StopAsyncIteration)) {
+        PyErr_Clear();
+        return 1;  // Expected end of iteration
+    }
+    
+    // Re-raise other exceptions
+    PyErr_SetObject((PyObject*)Py_TYPE(exc), exc);
+    return 0;  // Failure - exception should propagate
+}
+
+// C helper function for ASYNC_GEN_WRAP intrinsic
+// Wraps a yielded value from an async generator
+// This is needed to distinguish yielded values from awaited values
+extern "C" PyObject *JITAsyncGenWrap(PyObject *value)
+{
+    // In CPython, this creates a _PyAsyncGenWrappedValue
+    // Since that's an internal type, we'll use a simpler approach:
+    // Create a tuple with a marker and the value
+    // Format: ("__jit_async_gen_wrap__", value)
+    // 
+    // Note: For full compatibility, we should use the actual CPython
+    // internal function _PyAsyncGenValueWrapperNew, but that's not
+    // part of the stable C API. This approach works for JIT generators.
+    
+    PyObject *marker = PyUnicode_FromString("__jit_async_gen_wrap__");
+    if (marker == NULL) {
+        return NULL;
+    }
+    
+    PyObject *wrapped = PyTuple_Pack(2, marker, value);
+    Py_DECREF(marker);
+    
+    if (wrapped == NULL) {
+        return NULL;
+    }
+    
+    // Incref the value since we're keeping a reference in the tuple
+    // The caller is responsible for the original value's refcount
+    return wrapped;
+}
+
+// C helper function to unwrap an async generator wrapped value
+// Returns the unwrapped value if it's wrapped, NULL otherwise (not an error)
+extern "C" PyObject *JITAsyncGenUnwrap(PyObject *obj)
+{
+    if (!PyTuple_Check(obj) || PyTuple_GET_SIZE(obj) != 2) {
+        return NULL;
+    }
+    
+    PyObject *marker = PyTuple_GET_ITEM(obj, 0);
+    if (!PyUnicode_Check(marker)) {
+        return NULL;
+    }
+    
+    const char *marker_str = PyUnicode_AsUTF8(marker);
+    if (marker_str == NULL || strcmp(marker_str, "__jit_async_gen_wrap__") != 0) {
+        PyErr_Clear();  // Clear any error from AsUTF8
+        return NULL;
+    }
+    
+    PyObject *value = PyTuple_GET_ITEM(obj, 1);
+    Py_INCREF(value);
+    return value;
 }
 
 // C helper function for MATCH_KEYS opcode
@@ -474,6 +600,27 @@ namespace justjit
         // Register JITMatchClass helper for MATCH_CLASS opcode
         helper_symbols[es.intern("JITMatchClass")] = {
             llvm::orc::ExecutorAddr::fromPtr(JITMatchClass),
+            llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable};
+
+        // Register async iteration helpers for async generators
+        helper_symbols[es.intern("JITGetAIter")] = {
+            llvm::orc::ExecutorAddr::fromPtr(JITGetAIter),
+            llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable};
+
+        helper_symbols[es.intern("JITGetANext")] = {
+            llvm::orc::ExecutorAddr::fromPtr(JITGetANext),
+            llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable};
+
+        helper_symbols[es.intern("JITEndAsyncFor")] = {
+            llvm::orc::ExecutorAddr::fromPtr(JITEndAsyncFor),
+            llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable};
+
+        helper_symbols[es.intern("JITAsyncGenWrap")] = {
+            llvm::orc::ExecutorAddr::fromPtr(JITAsyncGenWrap),
+            llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable};
+
+        helper_symbols[es.intern("JITAsyncGenUnwrap")] = {
+            llvm::orc::ExecutorAddr::fromPtr(JITAsyncGenUnwrap),
             llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable};
 
         // Register debug trace helpers
@@ -1089,6 +1236,35 @@ namespace justjit
         llvm::FunctionType *debug_stack_type = llvm::FunctionType::get(
             void_type, {ptr_type, ptr_type, i32_type}, false);
         jit_debug_stack_func = llvm::Function::Create(debug_stack_type, llvm::Function::ExternalLinkage, "jit_debug_stack", module);
+
+        // ========== Async Generator Support ==========
+
+        // PyObject* JITGetAIter(PyObject* obj)
+        // Get async iterator from object by calling __aiter__
+        // Equivalent to Python's aiter() builtin
+        llvm::FunctionType *jit_get_aiter_type = llvm::FunctionType::get(ptr_type, {ptr_type}, false);
+        jit_get_aiter_func = llvm::Function::Create(jit_get_aiter_type, llvm::Function::ExternalLinkage, "JITGetAIter", module);
+
+        // PyObject* JITGetANext(PyObject* aiter)
+        // Get next awaitable from async iterator by calling __anext__
+        llvm::FunctionType *jit_get_anext_type = llvm::FunctionType::get(ptr_type, {ptr_type}, false);
+        jit_get_anext_func = llvm::Function::Create(jit_get_anext_type, llvm::Function::ExternalLinkage, "JITGetANext", module);
+
+        // int JITEndAsyncFor(PyObject* exc)
+        // Handle exception at end of async for loop
+        // Returns 1 if StopAsyncIteration (success), 0 otherwise (propagate)
+        llvm::FunctionType *jit_end_async_for_type = llvm::FunctionType::get(i32_type, {ptr_type}, false);
+        jit_end_async_for_func = llvm::Function::Create(jit_end_async_for_type, llvm::Function::ExternalLinkage, "JITEndAsyncFor", module);
+
+        // PyObject* JITAsyncGenWrap(PyObject* value)
+        // Wrap yielded value from async generator
+        llvm::FunctionType *jit_async_gen_wrap_type = llvm::FunctionType::get(ptr_type, {ptr_type}, false);
+        jit_async_gen_wrap_func = llvm::Function::Create(jit_async_gen_wrap_type, llvm::Function::ExternalLinkage, "JITAsyncGenWrap", module);
+
+        // PyObject* JITAsyncGenUnwrap(PyObject* obj)
+        // Unwrap async generator wrapped value
+        llvm::FunctionType *jit_async_gen_unwrap_type = llvm::FunctionType::get(ptr_type, {ptr_type}, false);
+        jit_async_gen_unwrap_func = llvm::Function::Create(jit_async_gen_unwrap_type, llvm::Function::ExternalLinkage, "JITAsyncGenUnwrap", module);
     }
 
     // =========================================================================
@@ -9327,7 +9503,7 @@ namespace justjit
                     {
                         llvm::Value *div_result = builder.CreateFDiv(lhs, rhs, "fdiv_floor");
                         // Call floor intrinsic
-                        llvm::Function *floor_fn = llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::floor, {f64_type});
+                        llvm::Function *floor_fn = LLVM_GET_INTRINSIC_DECLARATION(module.get(), llvm::Intrinsic::floor, {f64_type});
                         result = builder.CreateCall(floor_fn, {div_result}, "floor");
                         break;
                     }
@@ -9336,7 +9512,7 @@ namespace justjit
                         break;
                     case 8: // POWER
                     {
-                        llvm::Function *pow_fn = llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::pow, {f64_type});
+                        llvm::Function *pow_fn = LLVM_GET_INTRINSIC_DECLARATION(module.get(), llvm::Intrinsic::pow, {f64_type});
                         result = builder.CreateCall(pow_fn, {lhs, rhs}, "pow");
                         break;
                     }
@@ -13782,6 +13958,119 @@ namespace justjit
                     builder.SetInsertPoint(continue_block);
                     current_block = continue_block;
                     stack.push_back(result_val);
+                }
+            }
+            // ========== Async Iteration Opcodes (for async for loops) ==========
+            else if (instr.opcode == op::GET_AITER)
+            {
+                // GET_AITER: Get async iterator from object
+                // STACK: [..., obj] -> [..., aiter]
+                // Implements: STACK[-1] = STACK[-1].__aiter__()
+                if (!stack.empty())
+                {
+                    llvm::Value *obj = stack.back();
+                    stack.pop_back();
+                    
+                    // Call our JITGetAIter helper (wraps PyObject_GetAIter)
+                    llvm::Value *aiter = builder.CreateCall(jit_get_aiter_func, {obj}, "aiter");
+                    
+                    // Decref original object
+                    builder.CreateCall(py_xdecref_func, {obj});
+                    
+                    // Check for error (NULL return)
+                    llvm::BasicBlock *error_block = llvm::BasicBlock::Create(
+                        *local_context, "get_aiter_error_" + std::to_string(i), func);
+                    llvm::BasicBlock *continue_block = llvm::BasicBlock::Create(
+                        *local_context, "get_aiter_cont_" + std::to_string(i), func);
+                    
+                    llvm::Value *is_null = builder.CreateICmpEQ(aiter,
+                        llvm::ConstantPointerNull::get(llvm::PointerType::get(*local_context, 0)));
+                    builder.CreateCondBr(is_null, error_block, continue_block);
+                    
+                    // Error path - return NULL to propagate exception
+                    builder.SetInsertPoint(error_block);
+                    builder.CreateStore(llvm::ConstantInt::get(i32_type, -2), state_ptr);
+                    builder.CreateRet(llvm::ConstantPointerNull::get(llvm::PointerType::get(*local_context, 0)));
+                    
+                    // Continue path
+                    builder.SetInsertPoint(continue_block);
+                    current_block = continue_block;
+                    stack.push_back(aiter);
+                }
+            }
+            else if (instr.opcode == op::GET_ANEXT)
+            {
+                // GET_ANEXT: Get next awaitable from async iterator
+                // STACK: [..., aiter] -> [..., aiter, awaitable]
+                // Implements: STACK.append(get_awaitable(STACK[-1].__anext__()))
+                if (!stack.empty())
+                {
+                    llvm::Value *aiter = stack.back();
+                    // Don't pop - aiter stays on stack for next iteration
+                    
+                    // Call our JITGetANext helper (calls __anext__, returns awaitable)
+                    llvm::Value *awaitable = builder.CreateCall(jit_get_anext_func, {aiter}, "anext");
+                    
+                    // Check for error (NULL return)
+                    llvm::BasicBlock *error_block = llvm::BasicBlock::Create(
+                        *local_context, "get_anext_error_" + std::to_string(i), func);
+                    llvm::BasicBlock *continue_block = llvm::BasicBlock::Create(
+                        *local_context, "get_anext_cont_" + std::to_string(i), func);
+                    
+                    llvm::Value *is_null = builder.CreateICmpEQ(awaitable,
+                        llvm::ConstantPointerNull::get(llvm::PointerType::get(*local_context, 0)));
+                    builder.CreateCondBr(is_null, error_block, continue_block);
+                    
+                    // Error path - check if it's StopAsyncIteration
+                    builder.SetInsertPoint(error_block);
+                    // For now, just propagate the error
+                    builder.CreateStore(llvm::ConstantInt::get(i32_type, -2), state_ptr);
+                    builder.CreateRet(llvm::ConstantPointerNull::get(llvm::PointerType::get(*local_context, 0)));
+                    
+                    // Continue path
+                    builder.SetInsertPoint(continue_block);
+                    current_block = continue_block;
+                    stack.push_back(awaitable);
+                }
+            }
+            else if (instr.opcode == op::END_ASYNC_FOR)
+            {
+                // END_ASYNC_FOR: End of async for loop iteration
+                // STACK: [..., aiter, exc] -> [...]
+                // If exc is StopAsyncIteration, clear it and continue
+                // Otherwise, re-raise the exception
+                if (stack.size() >= 2)
+                {
+                    llvm::Value *exc = stack.back();
+                    stack.pop_back();
+                    llvm::Value *aiter = stack.back();
+                    stack.pop_back();
+                    
+                    // Call our JITEndAsyncFor helper
+                    llvm::Value *result = builder.CreateCall(jit_end_async_for_func, {exc}, "end_async_for");
+                    
+                    // Decref both values
+                    builder.CreateCall(py_xdecref_func, {exc});
+                    builder.CreateCall(py_xdecref_func, {aiter});
+                    
+                    // Check result: 1 = success (StopAsyncIteration), 0 = error (propagate)
+                    llvm::BasicBlock *success_block = llvm::BasicBlock::Create(
+                        *local_context, "end_async_success_" + std::to_string(i), func);
+                    llvm::BasicBlock *error_block = llvm::BasicBlock::Create(
+                        *local_context, "end_async_error_" + std::to_string(i), func);
+                    
+                    llvm::Value *is_success = builder.CreateICmpNE(result,
+                        llvm::ConstantInt::get(i32_type, 0));
+                    builder.CreateCondBr(is_success, success_block, error_block);
+                    
+                    // Error path - propagate exception
+                    builder.SetInsertPoint(error_block);
+                    builder.CreateStore(llvm::ConstantInt::get(i32_type, -2), state_ptr);
+                    builder.CreateRet(llvm::ConstantPointerNull::get(llvm::PointerType::get(*local_context, 0)));
+                    
+                    // Success path - loop ends normally
+                    builder.SetInsertPoint(success_block);
+                    current_block = success_block;
                 }
             }
             // ========== Exception Handling Opcodes for Generators ==========

@@ -83,13 +83,15 @@ JustJIT is ideal for:
 - Mathematical computations with known types
 - Hot paths that are called frequently
 - Algorithms like sorting, searching, or matrix operations
+- Generator functions with intensive computation
+- Async functions with CPU-bound work between awaits
 
 JustJIT is not ideal for:
 
-- Functions that are called once
+- Functions that are called only once
 - Code with many type variations
 - Heavy use of Python objects (lists, dicts, classes)
-- Functions with complex control flow or exceptions
+- Async generators (not yet supported)
 
 Optimization Tips
 -----------------

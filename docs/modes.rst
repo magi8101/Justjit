@@ -1,7 +1,7 @@
 Compilation Modes
 =================
 
-JustJIT supports 11 native compilation modes. Each mode compiles Python functions to work with a specific LLVM type, eliminating Python object overhead.
+JustJIT supports 12 native compilation modes. Each mode compiles Python functions to work with a specific LLVM type, eliminating Python object overhead.
 
 Mode Summary
 ------------
@@ -13,6 +13,9 @@ Mode Summary
    * - Mode
      - LLVM Type
      - Description
+   * - ``auto`` / ``object``
+     - PyObject*
+     - Full Python semantics. Default mode, most compatible.
    * - ``int``
      - i64
      - 64-bit signed integer. Best for integer math and loops.
@@ -46,6 +49,32 @@ Mode Summary
    * - ``optional_f64``
      - {i64, f64}
      - Nullable float64 with None handling.
+
+Object Mode (auto)
+------------------
+
+The ``auto`` mode (also called ``object`` mode) is the default. It compiles functions while preserving full Python semantics:
+
+.. code-block:: python
+
+   @justjit.jit  # mode='auto' is the default
+   def flexible_add(a, b):
+       return a + b
+
+   flexible_add(1, 2)          # Works with integers
+   flexible_add(1.5, 2.5)      # Works with floats
+   flexible_add("hello", " ")  # Works with strings
+
+This mode generates LLVM IR that calls Python C API functions (``PyNumber_Add``, ``PyObject_GetAttr``, etc.), so it maintains full compatibility with any Python type.
+
+Supported operations:
+
+- All Python operations via C API calls
+- Exception handling (try/except/finally)
+- Pattern matching (match/case)
+- Context managers (with statements)
+- Closures and nested functions
+- Generators and async functions
 
 Integer Mode (int)
 ------------------
@@ -203,13 +232,27 @@ The ``vec4f`` mode uses SSE SIMD operations on 4 floats simultaneously.
    # Input: two <4 x float> vectors
    # Output: <4 x float> sum
 
-LLVM IR:
+**Pointer-Based ABI:**
+
+SIMD modes use a pointer-based ABI for Windows x64 compatibility:
+
+.. code-block:: cpp
+
+   // Actual signature: void fn(float* out, float* a, float* b)
+   // Instead of: <4 x float> fn(<4 x float> a, <4 x float> b)
+
+The callable wrapper handles this transparently.
+
+LLVM IR (internal):
 
 .. code-block:: llvm
 
-   define <4 x float> @vec_add(<4 x float> %a, <4 x float> %b) {
-     %result = fadd <4 x float> %a, %b
-     ret <4 x float> %result
+   define void @vec_add(ptr %out, ptr %a, ptr %b) {
+     %vec_a = load <4 x float>, ptr %a, align 16  ; 16-byte alignment for SSE
+     %vec_b = load <4 x float>, ptr %b, align 16
+     %result = fadd <4 x float> %vec_a, %vec_b
+     store <4 x float> %result, ptr %out, align 16
+     ret void
    }
 
 Vec8i Mode (vec8i)
@@ -225,13 +268,24 @@ The ``vec8i`` mode uses AVX SIMD operations on 8 integers simultaneously.
 
    # Operations on 8 i32 values at once
 
-LLVM IR:
+**Pointer-Based ABI:**
+
+Like vec4f, uses pointer-based ABI:
+
+.. code-block:: cpp
+
+   // Actual signature: void fn(int32_t* out, int32_t* a, int32_t* b)
+
+LLVM IR (internal):
 
 .. code-block:: llvm
 
-   define <8 x i32> @vec_mul(<8 x i32> %a, <8 x i32> %b) {
-     %result = mul <8 x i32> %a, %b
-     ret <8 x i32> %result
+   define void @vec_mul(ptr %out, ptr %a, ptr %b) {
+     %vec_a = load <8 x i32>, ptr %a, align 32  ; 32-byte alignment for AVX
+     %vec_b = load <8 x i32>, ptr %b, align 32
+     %result = mul <8 x i32> %vec_a, %vec_b
+     store <8 x i32> %result, ptr %out, align 32
+     ret void
    }
 
 Optional_f64 Mode (optional_f64)

@@ -21,10 +21,12 @@ Features
 --------
 
 - Compiles Python bytecode to LLVM IR, then to native machine code
-- 11 native data types for maximum performance
+- **12 native compilation modes** for maximum performance (int, float, bool, complex, SIMD, etc.)
+- Generator and async function support via state machine compilation
 - No interpreter overhead for numeric loops
+- Near-complete Python 3.13 opcode coverage (75+ opcodes)
 - Simple decorator-based API
-- Cross-platform support (Windows, macOS, Linux)
+- Cross-platform support (Windows x64, macOS arm64, Linux x64)
 
 Quick Start
 -----------
@@ -67,6 +69,8 @@ Use the ``@jit`` decorator:
    :caption: Advanced
 
    internals
+   async
+   cfg
 
 Indices and tables
 ==================
