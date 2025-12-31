@@ -80,7 +80,7 @@ jobs:
         CIBW_BEFORE_ALL_LINUX: |
           set -ex
           # Install LLVM development packages via Alpine apk
-          apk add --no-cache llvm-dev clang-dev clang-static llvm-static zlib-dev libxml2-dev libffi-dev cmake ninja ncurses-dev musl-dev g++ linux-headers
+          apk add --no-cache llvm-dev clang-dev clang-static llvm-static zlib-dev libxml2-dev libffi-dev cmake ninja ncurses-dev musl-dev g++ linux-headers curl-dev
           # Verify LLVM installation
           llvm-config --version || echo "llvm-config not found"
           ls -la /usr/lib/cmake/llvm/ || true
