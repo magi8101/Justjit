@@ -46,33 +46,39 @@ manylinux-x86_64-image = "manylinux_2_28"
 musllinux-x86_64-image = "musllinux_1_2"
 before-build = "pip install nanobind scikit-build-core cmake ninja"
 
-# Manylinux-specific: use DNF for LLVM
+# Manylinux-specific: use conda for LLVM
 [[tool.cibuildwheel.overrides]]
 select = "*-manylinux_*"
 before-all = """
 set -ex
-dnf install -y epel-release || true
-dnf config-manager --set-enabled powertools || true
-dnf install -y python3-devel llvm-devel llvm-static clang-devel zlib-devel libxml2-devel libffi-devel cmake ninja-build ncurses-devel || true
-llvm-config --version || echo "llvm-config not found"
+export CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes
+curl -L -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3
+export PATH="$HOME/miniconda3/bin:$PATH"
+conda install -y --override-channels -c conda-forge llvmdev=18.1.8 clangdev=18.1.8 zlib libxml2
+llvm-config --version
 """
-repair-wheel-command = "auditwheel repair --plat manylinux_2_28_x86_64 -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/"
-environment = { LLVM_DIR = "/usr/lib64/cmake/llvm", CMAKE_PREFIX_PATH = "/usr", LD_LIBRARY_PATH = "/usr/lib64:/usr/lib" }
+repair-wheel-command = "auditwheel repair --plat manylinux_2_28_x86_64 -w {dest_dir} {wheel}"
+environment = { PATH = "$HOME/miniconda3/bin:$PATH", LLVM_DIR = "$HOME/miniconda3/lib/cmake/llvm", Clang_DIR = "$HOME/miniconda3/lib/cmake/clang", CMAKE_PREFIX_PATH = "$HOME/miniconda3" }
 
-# Musllinux-specific: use APK for LLVM
+# Musllinux-specific: use conda for LLVM
 [[tool.cibuildwheel.overrides]]
 select = "*-musllinux_*"
 before-all = """
 set -ex
-apk add --no-cache llvm-dev clang-dev clang-static llvm-static zlib-dev libxml2-dev libffi-dev cmake ninja ncurses-dev musl-dev g++ linux-headers
-llvm-config --version || echo "llvm-config not found"
+export CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes
+wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+sh Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3
+export PATH="$HOME/miniconda3/bin:$PATH"
+conda install -y --override-channels -c conda-forge llvmdev=18.1.8 clangdev=18.1.8 zlib libxml2
+llvm-config --version
 """
-repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/"
-environment = { LLVM_DIR = "/usr/lib/cmake/llvm", Clang_DIR = "/usr/lib/cmake/clang", CMAKE_PREFIX_PATH = "/usr" }
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
+environment = { PATH = "$HOME/miniconda3/bin:$PATH", LLVM_DIR = "$HOME/miniconda3/lib/cmake/llvm", Clang_DIR = "$HOME/miniconda3/lib/cmake/clang", CMAKE_PREFIX_PATH = "$HOME/miniconda3" }
 
 [tool.cibuildwheel.macos]
 before-build = "pip install nanobind scikit-build-core cmake ninja delocate"
-repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel} || cp {wheel} {dest_dir}/"
+repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
 
 [tool.cibuildwheel.macos.environment]
 MACOSX_DEPLOYMENT_TARGET = "11.0"
