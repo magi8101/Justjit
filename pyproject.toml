@@ -42,7 +42,7 @@ skip = ["*-win32", "*-manylinux_i686", "*-musllinux_i686", "pp*"]
 archs = ["auto64"]
 
 [tool.cibuildwheel.linux]
-manylinux-x86_64-image = "manylinux_2_28"
+manylinux-x86_64-image = "manylinux_2_35"
 musllinux-x86_64-image = "musllinux_1_2"
 before-build = "pip install nanobind scikit-build-core cmake ninja"
 
