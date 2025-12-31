@@ -136,7 +136,7 @@ jobs:
           LLVM_DIR=${{ env.LLVM_DIR }}
           Clang_DIR=${{ env.Clang_DIR }}
           CMAKE_PREFIX_PATH=${{ env.CMAKE_PREFIX_PATH }}
-          MACOSX_DEPLOYMENT_TARGET=11.0
+          MACOSX_DEPLOYMENT_TARGET=12.1
           DYLD_LIBRARY_PATH=${{ env.CMAKE_PREFIX_PATH }}/lib
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja delocate"
         CIBW_REPAIR_WHEEL_COMMAND_MACOS: "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
