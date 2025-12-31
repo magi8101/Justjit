@@ -69,19 +69,58 @@ if(Clang_FOUND)
     message(STATUS "Found Clang - enabling InlineCCompiler")
     add_definitions(-DJUSTJIT_HAS_CLANG=1)
     include_directories(${CLANG_INCLUDE_DIRS})
-    set(CLANG_LIBS
-        clangFrontend
-        clangCodeGen
-        clangSema
-        clangAST
-        clangParse
-        clangLex
-        clangAnalysis
-        clangEdit
-        clangSerialization
-        clangBasic
-        clangSupport
-    )
+    # Check for clang-cpp (monolithic shared library, preferred for distro builds)
+    if(TARGET clang-cpp)
+        set(CLANG_LIBS clang-cpp)
+    elseif(TARGET clang::clang-cpp)
+        set(CLANG_LIBS clang::clang-cpp)
+    elseif(TARGET clangFrontend)
+        # Components as non-namespaced targets
+        set(CLANG_LIBS
+            clangFrontend
+            clangCodeGen
+            clangSema
+            clangAST
+            clangParse
+            clangLex
+            clangAnalysis
+            clangEdit
+            clangSerialization
+            clangBasic
+            clangSupport
+        )
+    elseif(TARGET clang::clangFrontend)
+        # Components as namespaced targets (common in some configs)
+        set(CLANG_LIBS
+            clang::clangFrontend
+            clang::clangCodeGen
+            clang::clangSema
+            clang::clangAST
+            clang::clangParse
+            clang::clangLex
+            clang::clangAnalysis
+            clang::clangEdit
+            clang::clangSerialization
+            clang::clangBasic
+            clang::clangSupport
+        )
+    else()
+        # Fallback to manual list (likely to fail if not found above, but tries -l...)
+        message(WARNING "Clang targets not found, attempting link via library names")
+         set(CLANG_LIBS
+            clangFrontend
+            clangCodeGen
+            clangSema
+            clangAST
+            clangParse
+            clangLex
+            clangAnalysis
+            clangEdit
+            clangSerialization
+            clangBasic
+            clangSupport
+        )
+    endif()
 else()
     message(STATUS "Clang not found - InlineCCompiler will be disabled")
     set(CLANG_LIBS "")
