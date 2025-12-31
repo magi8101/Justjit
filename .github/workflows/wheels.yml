@@ -60,7 +60,6 @@ jobs:
           conda install -y --override-channels -c conda-forge llvmdev=18.1.8 clangdev=18.1.8 zlib libxml2
           llvm-config --version
         CIBW_ENVIRONMENT_LINUX: >-
-          PATH=$HOME/miniconda3/bin:$PATH
           LLVM_DIR=$HOME/miniconda3/lib/cmake/llvm
           Clang_DIR=$HOME/miniconda3/lib/cmake/clang
           CMAKE_PREFIX_PATH=$HOME/miniconda3
