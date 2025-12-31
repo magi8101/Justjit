@@ -48,22 +48,19 @@ jobs:
         CIBW_BUILD: "cp313-manylinux_*"
         CIBW_SKIP: "*-win32 *-manylinux_i686"
         CIBW_ARCHS: ${{ matrix.arch }}
-        CIBW_MANYLINUX_X86_64_IMAGE: "quay.io/pypa/manylinux_2_35_x86_64:2024.11.16-1"
+        CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
         CIBW_BEFORE_ALL_LINUX: |
           set -ex
-          # Install miniconda for consistent LLVM across all platforms
-          export CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes
-          curl -L -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-          bash Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3
-          export PATH="$HOME/miniconda3/bin:$PATH"
-          # Use only conda-forge to avoid Anaconda TOS issues
-          conda install -y --override-channels -c conda-forge llvmdev=18.1.8 clangdev=18.1.8 zlib libxml2
+          # Install system LLVM packages (manylinux best practice)
+          dnf install -y epel-release
+          dnf config-manager --set-enabled powertools || true
+          dnf install -y python3-devel llvm-devel llvm-static clang-devel zlib-devel libxml2-devel libffi-devel cmake ninja-build ncurses-devel
           llvm-config --version
         CIBW_ENVIRONMENT_LINUX: >-
-          LLVM_DIR=$HOME/miniconda3/lib/cmake/llvm
-          Clang_DIR=$HOME/miniconda3/lib/cmake/clang
-          CMAKE_PREFIX_PATH=$HOME/miniconda3
-          LD_LIBRARY_PATH=$HOME/miniconda3/lib:$LD_LIBRARY_PATH
+          LLVM_DIR=/usr/lib64/cmake/llvm
+          Clang_DIR=/usr/lib64/cmake/clang
+          CMAKE_PREFIX_PATH=/usr
+          LD_LIBRARY_PATH=/usr/lib64:/usr/lib
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
         CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w {dest_dir} {wheel}"
         CIBW_TEST_COMMAND: "python {project}/tests/ci_test.py"
