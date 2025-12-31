@@ -40,6 +40,12 @@ if(WIN32)
     endif()
 endif()
 
+# Set policy to allow missing files in imported targets (e.g., LLVMTestingAnnotations on Alpine)
+# This is needed because some LLVM packages don't include all testing libraries
+if(POLICY CMP0111)
+    cmake_policy(SET CMP0111 OLD)
+endif()
+
 find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
