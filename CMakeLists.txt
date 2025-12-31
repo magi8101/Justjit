@@ -48,6 +48,12 @@ endif()
 
 find_package(LLVM REQUIRED CONFIG)
 
+# Workaround: Create stub for LLVMTestingAnnotations if missing (Alpine LLVM packaging issue)
+if(NOT TARGET LLVMTestingAnnotations)
+    add_library(LLVMTestingAnnotations INTERFACE IMPORTED)
+    message(STATUS "Created stub LLVMTestingAnnotations target (not provided by LLVM package)")
+endif()
+
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 message(STATUS "LLVM library dir: ${LLVM_LIBRARY_DIR}")
