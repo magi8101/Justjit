@@ -17160,7 +17160,13 @@ static inline float* buffer_float(void* pyobj) {
         auto diag_opts = llvm::makeIntrusiveRefCnt<clang::DiagnosticOptions>();
         clang::TextDiagnosticPrinter* diag_printer = 
             new clang::TextDiagnosticPrinter(llvm::errs(), diag_opts.get());
+#if LLVM_VERSION_MAJOR >= 20
+        // LLVM 20+ requires VFS as first argument for member function
+        compiler.createDiagnostics(*llvm::vfs::getRealFileSystem(), diag_printer, true);
+#else
+        // LLVM 17-19 use simpler member function signature
         compiler.createDiagnostics(diag_printer, true);
+#endif
         
         // Create invocation and parse args
         clang::CompilerInvocation::CreateFromArgs(
