@@ -6,18 +6,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 
 # Find Python
-if (CMAKE_VERSION VERSION_LESS 3.18)
-  set(DEV_MODULE Development)
-else()
-  set(DEV_MODULE Development.Module)
-endif()
-find_package(Python 3.8 COMPONENTS Interpreter ${DEV_MODULE} REQUIRED)
+find_package(Python3 3.13 COMPONENTS Interpreter Development REQUIRED)
+
+# Link against Python3 to resolve symbols like PyRun_StringFlags on macOS
+# This is safe because we link PRIVATE and modern CMake handles the details
+# link_libraries(Python3::Python) - REMOVED global link, using target specific below
 
 # Find nanobind
 execute_process(
-  COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+  COMMAND "${Python3_EXECUTABLE}" -m nanobind --cmake_dir
   OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
 find_package(nanobind CONFIG REQUIRED)
+
+
 
 # LLVM configuration
 # conda-forge llvmdev provides DYNAMIC libraries (libLLVM.so / LLVM.dll)
@@ -160,6 +161,17 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
     src/bindings.cpp
     src/raii_wrapper.cpp
 )
+target_link_libraries(_core PRIVATE Python3::Python)
+
+if(APPLE)
+  if(Python3_LIBRARY)
+    message(STATUS "Linking Python library: ${Python3_LIBRARY}")
+    target_link_libraries(_core PRIVATE ${Python3_LIBRARY})
+  elseif(Python3_LIBRARIES)
+    message(STATUS "Linking Python libraries: ${Python3_LIBRARIES}")
+    target_link_libraries(_core PRIVATE ${Python3_LIBRARIES})
+  endif()
+endif()
 
 # Pass embedded header paths to source code via compile definitions
 if(CLANG_RESOURCE_INCLUDE)
