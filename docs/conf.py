@@ -13,8 +13,8 @@ sys.path.insert(0, os.path.abspath('../src'))
 project = 'JustJIT'
 copyright = '2024, Magi-sharma'
 author = 'Magi-sharma'
-release = '0.1.4'
-version = '0.1.4'
+release = '0.1.5'
+version = '0.1.5'
 
 # -- General configuration ---------------------------------------------------
 
