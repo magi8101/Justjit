@@ -17160,7 +17160,7 @@ static inline float* buffer_float(void* pyobj) {
         auto diag_opts = llvm::makeIntrusiveRefCnt<clang::DiagnosticOptions>();
         clang::TextDiagnosticPrinter* diag_printer = 
             new clang::TextDiagnosticPrinter(llvm::errs(), diag_opts.get());
-        compiler.createDiagnostics(diag_opts.get(), diag_printer, true);
+        compiler.createDiagnostics(diag_printer, true);
         
         // Create invocation and parse args
         clang::CompilerInvocation::CreateFromArgs(
