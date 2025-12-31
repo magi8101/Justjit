@@ -38,12 +38,11 @@ build-dir = "build/{wheel_tag}"
 [tool.cibuildwheel]
 build-verbosity = 1
 build = ["cp313-*"]
-skip = ["*-win32", "*-manylinux_i686", "*-musllinux_i686", "pp*"]
+skip = ["*-win32", "*-manylinux_i686", "pp*"]  # removed "*-musllinux_i686"
 archs = ["auto64"]
 
 [tool.cibuildwheel.linux]
 manylinux-x86_64-image = "manylinux_2_28"
-musllinux-x86_64-image = "musllinux_1_2"
 before-build = "pip install nanobind scikit-build-core cmake ninja"
 
 # Manylinux-specific: use system packages via dnf
@@ -58,21 +57,6 @@ llvm-config --version
 """
 repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
 environment = { LLVM_DIR = "/usr/lib64/cmake/llvm", Clang_DIR = "/usr/lib64/cmake/clang", CMAKE_PREFIX_PATH = "/usr", LD_LIBRARY_PATH = "/usr/lib64:/usr/lib" }
-
-# Musllinux-specific: use conda (Alpine packages incomplete)
-[[tool.cibuildwheel.overrides]]
-select = "*-musllinux_*"
-before-all = """
-set -ex
-export CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes
-wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-sh Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3
-export PATH="$HOME/miniconda3/bin:$PATH"
-conda install -y --override-channels -c conda-forge llvmdev=18.1.8 clangdev=18.1.8 zlib libxml2
-llvm-config --version
-"""
-repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
-environment = { LLVM_DIR = "$HOME/miniconda3/lib/cmake/llvm", Clang_DIR = "$HOME/miniconda3/lib/cmake/clang", CMAKE_PREFIX_PATH = "$HOME/miniconda3", LD_LIBRARY_PATH = "$HOME/miniconda3/lib:$LD_LIBRARY_PATH" }
 
 [tool.cibuildwheel.macos]
 before-build = "pip install nanobind scikit-build-core cmake ninja delocate"
