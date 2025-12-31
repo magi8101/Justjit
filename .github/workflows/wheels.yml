@@ -51,17 +51,24 @@ jobs:
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
         CIBW_BEFORE_ALL_LINUX: |
           set -ex
-          # Install LLVM development packages from EPEL/CRB for manylinux_2_28 compatibility
-          dnf install -y epel-release || true
-          dnf config-manager --set-enabled powertools || true
-          dnf install -y python3-devel llvm-devel llvm-static clang-devel zlib-devel libxml2-devel libffi-devel cmake ninja-build ncurses-devel || true
-          # Verify LLVM installation
-          llvm-config --version || echo "llvm-config not found"
-          ls -la /usr/lib64/cmake/llvm/ || ls -la /usr/lib/cmake/llvm/ || true
+          # Install miniconda for consistent LLVM across all platforms
+          curl -L -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+          bash Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3
+          export PATH="$HOME/miniconda3/bin:$PATH"
+          conda install -y -c conda-forge llvmdev=18.1.8 clangdev=18.1.8 zlib libxml2
+          # Set environment for CMake
+          LLVM_DIR=$(echo $HOME/miniconda3/lib/cmake/llvm)
+          CLANG_DIR=$(echo $HOME/miniconda3/lib/cmake/clang)
+          CMAKE_PREFIX_PATH=$HOME/miniconda3
+          echo "LLVM_DIR=$LLVM_DIR" >> $GITHUB_ENV
+          echo "Clang_DIR=$CLANG_DIR" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+          llvm-config --version
         CIBW_ENVIRONMENT_LINUX: >-
-          LLVM_DIR=/usr/lib64/cmake/llvm
-          CMAKE_PREFIX_PATH=/usr
-          LD_LIBRARY_PATH=/usr/lib64:/usr/lib
+          PATH=$HOME/miniconda3/bin:$PATH
+          LLVM_DIR=$HOME/miniconda3/lib/cmake/llvm
+          Clang_DIR=$HOME/miniconda3/lib/cmake/clang
+          CMAKE_PREFIX_PATH=$HOME/miniconda3
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
         CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair --plat manylinux_2_28_x86_64 -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/"
         CIBW_TEST_COMMAND: "python {project}/tests/ci_test.py"
@@ -79,21 +86,21 @@ jobs:
         CIBW_MUSLLINUX_X86_64_IMAGE: "musllinux_1_2"
         CIBW_BEFORE_ALL_LINUX: |
           set -ex
-          # Install LLVM development packages via Alpine apk
-          apk add --no-cache llvm-dev clang-dev clang-static llvm-static zlib-dev libxml2-dev libffi-dev cmake ninja ncurses-dev musl-dev g++ linux-headers curl-dev
-          # Verify LLVM installation
-          llvm-config --version || echo "llvm-config not found"
-          ls -la /usr/lib/cmake/llvm/ || true
-          # Workaround: Create empty LLVMTestingAnnotations library if missing (Alpine LLVM packaging issue)
-          if [ ! -f /usr/lib/llvm17/lib/libLLVMTestingAnnotations.a ]; then
-            echo "Creating stub libLLVMTestingAnnotations.a"
-            ar rcs /tmp/libLLVMTestingAnnotations.a
-            cp /tmp/libLLVMTestingAnnotations.a /usr/lib/llvm17/lib/ 2>/dev/null || true
-          fi
+          # Install miniconda for consistent LLVM across all platforms
+          wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+          sh Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3
+          export PATH="$HOME/miniconda3/bin:$PATH"
+          conda install -y -c conda-forge llvmdev=18.1.8 clangdev=18.1.8 zlib libxml2
+          # Set environment for CMake
+          LLVM_DIR=$(echo $HOME/miniconda3/lib/cmake/llvm)
+          CLANG_DIR=$(echo $HOME/miniconda3/lib/cmake/clang)
+          CMAKE_PREFIX_PATH=$HOME/miniconda3
+          llvm-config --version
         CIBW_ENVIRONMENT_LINUX: >-
-          LLVM_DIR=/usr/lib/cmake/llvm
-          Clang_DIR=/usr/lib/cmake/clang
-          CMAKE_PREFIX_PATH=/usr
+          PATH=$HOME/miniconda3/bin:$PATH
+          LLVM_DIR=$HOME/miniconda3/lib/cmake/llvm
+          Clang_DIR=$HOME/miniconda3/lib/cmake/clang
+          CMAKE_PREFIX_PATH=$HOME/miniconda3
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
         CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/"
         CIBW_TEST_COMMAND: "python {project}/tests/ci_test.py"
