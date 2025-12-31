@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 
 # Find Python
-find_package(Python3 3.13 COMPONENTS Interpreter Development REQUIRED)
+find_package(Python 3.13 COMPONENTS Interpreter Development REQUIRED)
 
 # Link against Python3 to resolve symbols like PyRun_StringFlags on macOS
 # This is safe because we link PRIVATE and modern CMake handles the details
@@ -14,7 +14,7 @@ find_package(Python3 3.13 COMPONENTS Interpreter Development REQUIRED)
 
 # Find nanobind
 execute_process(
-  COMMAND "${Python3_EXECUTABLE}" -m nanobind --cmake_dir
+  COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
   OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
 find_package(nanobind CONFIG REQUIRED)
 
@@ -161,15 +161,15 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
     src/bindings.cpp
     src/raii_wrapper.cpp
 )
-target_link_libraries(_core PRIVATE Python3::Python)
+target_link_libraries(_core PRIVATE Python::Python)
 
 if(APPLE)
-  if(Python3_LIBRARY)
-    message(STATUS "Linking Python library: ${Python3_LIBRARY}")
-    target_link_libraries(_core PRIVATE ${Python3_LIBRARY})
-  elseif(Python3_LIBRARIES)
-    message(STATUS "Linking Python libraries: ${Python3_LIBRARIES}")
-    target_link_libraries(_core PRIVATE ${Python3_LIBRARIES})
+  if(Python_LIBRARY)
+    message(STATUS "Linking Python library: ${Python_LIBRARY}")
+    target_link_libraries(_core PRIVATE ${Python_LIBRARY})
+  elseif(Python_LIBRARIES)
+    message(STATUS "Linking Python libraries: ${Python_LIBRARIES}")
+    target_link_libraries(_core PRIVATE ${Python_LIBRARIES})
   endif()
 endif()
 

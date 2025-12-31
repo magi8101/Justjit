@@ -53,7 +53,7 @@ before-all = """
 set -ex
 dnf install -y epel-release || true
 dnf config-manager --set-enabled crb || dnf config-manager --set-enabled powertools || true
-dnf install -y llvm-devel llvm-static clang-devel zlib-devel libxml2-devel libffi-devel cmake ninja-build ncurses-devel || true
+dnf install -y python3-devel llvm-devel llvm-static clang-devel zlib-devel libxml2-devel libffi-devel cmake ninja-build ncurses-devel || true
 llvm-config --version || echo "llvm-config not found"
 """
 repair-wheel-command = "auditwheel repair --plat manylinux_2_28_x86_64 -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/"
