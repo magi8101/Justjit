@@ -17160,7 +17160,11 @@ static inline float* buffer_float(void* pyobj) {
         auto diag_opts = llvm::makeIntrusiveRefCnt<clang::DiagnosticOptions>();
         clang::TextDiagnosticPrinter* diag_printer = 
             new clang::TextDiagnosticPrinter(llvm::errs(), diag_opts.get());
+#ifdef __APPLE__
+        compiler.createDiagnostics(diag_printer, true);
+#else
         compiler.createDiagnostics(*llvm::vfs::getRealFileSystem(), diag_printer, true);
+#endif
         
         // Create invocation and parse args
         clang::CompilerInvocation::CreateFromArgs(
