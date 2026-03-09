@@ -131,9 +131,9 @@ def sum_range(n):
 ## Inline C Compiler
 
 ```python
-from justjit import C
+from justjit import inline_c
 
-result = C("""
+result = inline_c("""
 double square(double x) {
     return x * x;
 }
