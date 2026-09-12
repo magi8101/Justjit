@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "justjit"
-version = "0.1.6"
+version = "0.1.7"
 description = "Fast Python JIT compiler using LLVM ORC - lowers Python bytecode to native machine code"
 readme = "README.md"
 requires-python = ">=3.13"
