@@ -10,6 +10,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 env:
   # Using conda-forge llvmdev 18.1.8 for static linking
   LLVM_VERSION: "18.1.8"
@@ -22,9 +25,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            arch: x86_64
-          - os: macos-14
+          - os: macos-15
             arch: arm64
           - os: windows-latest
             arch: AMD64
@@ -38,36 +39,6 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.13'
-
-    # ===== Build Wheels (Linux - manylinux) =====
-    # Uses system LLVM from EPEL/CRB for manylinux_2_28 ABI compatibility
-    - name: Build wheels (Linux - manylinux)
-      if: runner.os == 'Linux'
-      uses: pypa/cibuildwheel@v2.22
-      env:
-        CIBW_BUILD: "cp313-manylinux_*"
-        CIBW_SKIP: "*-win32 *-manylinux_i686"
-        CIBW_ARCHS: ${{ matrix.arch }}
-        CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
-        CIBW_BEFORE_ALL_LINUX: |
-          set -ex
-          # Install system LLVM packages (manylinux best practice)
-          dnf install -y epel-release
-          dnf config-manager --set-enabled powertools || true
-          dnf install -y python3-devel llvm-devel llvm-static clang-devel zlib-devel libxml2-devel libffi-devel cmake ninja-build ncurses-devel
-          llvm-config --version
-        CIBW_ENVIRONMENT_LINUX: >-
-          LLVM_DIR=/usr/lib64/cmake/llvm
-          Clang_DIR=/usr/lib64/cmake/clang
-          CMAKE_PREFIX_PATH=/usr
-          LD_LIBRARY_PATH=/usr/lib64:/usr/lib
-        CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja"
-        CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w {dest_dir} {wheel}"
-        CIBW_TEST_COMMAND: "python {project}/tests/ci_test.py"
-        CIBW_BUILD_VERBOSITY: 3
-
-  
-
 
     # ===== Build Wheels (macOS) =====
     # Use setup-miniconda for cleaner conda management
@@ -106,9 +77,8 @@ jobs:
           Clang_DIR=${{ env.Clang_DIR }}
           CMAKE_PREFIX_PATH=${{ env.CMAKE_PREFIX_PATH }}
           MACOSX_DEPLOYMENT_TARGET=12.1
-          DYLD_LIBRARY_PATH=${{ env.CMAKE_PREFIX_PATH }}/lib
         CIBW_BEFORE_BUILD: "pip install nanobind scikit-build-core cmake ninja delocate"
-        CIBW_REPAIR_WHEEL_COMMAND_MACOS: "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
+        CIBW_REPAIR_WHEEL_COMMAND_MACOS: "DYLD_FALLBACK_LIBRARY_PATH=${{ env.CMAKE_PREFIX_PATH }}/lib delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
         CIBW_TEST_COMMAND: "python {project}/tests/ci_test.py"
         CIBW_BUILD_VERBOSITY: 3
 
@@ -169,6 +139,54 @@ jobs:
         name: wheels-${{ matrix.os }}-${{ matrix.arch }}
         path: ./wheelhouse/*.whl
 
+  build_linux:
+    name: Build wheel on linux
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - uses: conda-incubator/setup-miniconda@v3
+      with:
+        python-version: '3.13'
+        channels: conda-forge
+        channel-priority: strict
+        activate-environment: build
+
+    # The manylinux dnf LLVM is 21.x; jit_core.cpp needs the Clang 18-19 API.
+    - name: Install LLVM 18 and build tools
+      shell: bash -el {0}
+      run: |
+        conda install -y llvmdev=18.1.8 clangdev=18.1.8 zlib libxml2 cmake ninja
+        pip install build nanobind scikit-build-core auditwheel patchelf
+
+    - name: Build wheel
+      shell: bash -el {0}
+      run: |
+        export LLVM_DIR="$CONDA_PREFIX/lib/cmake/llvm" Clang_DIR="$CONDA_PREFIX/lib/cmake/clang" CMAKE_PREFIX_PATH="$CONDA_PREFIX"
+        python -m build --wheel --no-isolation -o raw_wheel
+
+    # Bundles libLLVM / libclang-cpp into the wheel. Built on Ubuntu 22.04, so
+    # auditwheel tags it manylinux_2_35 (glibc >= 2.35), not manylinux_2_28.
+    - name: Bundle libraries into wheel
+      shell: bash -el {0}
+      run: |
+        export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
+        auditwheel repair -w wheelhouse raw_wheel/*.whl
+
+    - name: Test installed wheel
+      shell: bash -el {0}
+      run: |
+        python -m venv /tmp/testenv
+        /tmp/testenv/bin/pip install wheelhouse/*.whl
+        /tmp/testenv/bin/python tests/ci_test.py
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: wheels-linux-x86_64
+        path: wheelhouse/*.whl
+
   build_sdist:
     name: Build source distribution
     runs-on: ubuntu-latest
@@ -188,7 +206,7 @@ jobs:
 
   publish:
     name: Publish to PyPI
-    needs: [build_wheels, build_sdist]
+    needs: [build_wheels, build_linux, build_sdist]
     runs-on: ubuntu-latest
     # Publish on push to main or on release
     if: github.ref == 'refs/heads/main' || (github.event_name == 'release' && github.event.action == 'published')

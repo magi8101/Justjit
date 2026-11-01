@@ -47,7 +47,7 @@ except ImportError:
     _HAS_CLANG = False
     InlineCCompiler = None
 
-__version__ = "0.1.5"
+__version__ = "0.1.7"
 __all__ = ["JIT", "jit", "dump_ir", "create_jit_generator", "create_jit_coroutine", "InlineCCompiler", "inline_c", "dump_c_ir"]
 
 # Python code flags
